@@ -12,6 +12,7 @@ Minimal Telegram bot on Node.js. It authenticates with Telegram, logs in to the 
 
 - `TELEGRAM_BOT_TOKEN` - Telegram bot token
 - `TELEGRAM_POLL_TIMEOUT` - long polling timeout in seconds, default `30`
+- `LOG_TELEGRAM_MESSAGES` - duplicates incoming and outgoing Telegram messages to console; defaults to `true` outside Docker and `false` in Docker
 - `TASTY_LOGIN` - login for `https://api.tastycoffee.ru/api/v1/auth/login`
 - `TASTY_PASSWORD` - password for `https://api.tastycoffee.ru/api/v1/auth/login`
 - `TASTY_PRIVACY_AGREEMENT` - boolean flag sent to the login endpoint, default `true`
@@ -20,13 +21,17 @@ Minimal Telegram bot on Node.js. It authenticates with Telegram, logs in to the 
 
 The application automatically reads variables from `.env` if the file exists.
 
-## Telegram Buttons
+## Telegram Usage
+
+In private chats the bot shows a reply keyboard with:
 
 - `Прайс` - full catalog
 - `Акции` - combined selection of `Микролот недели`, `Сорт недели`, and `Сорт месяца`, grouped by promotion type
 - `Сорт недели` - only products with the `Сорт недели` label
 - `Сорт месяца` - only products with the `Сорт месяца` label
 - `Микролот недели` - only products with the `Микролот недели` label
+
+In group chats and supergroups the bot does not send a reply keyboard and responds only to the command `/акции`.
 
 ## Local Run
 

@@ -2,7 +2,7 @@
   "name": "coffee-bot",
   "version": "1.0.0",
   "private": true,
-  "description": "Minimal Telegram echo bot on Node.js",
+  "description": "Telegram bot for the Tasty Coffee catalog on Node.js",
   "type": "module",
   "scripts": {
     "start": "node src/index.js"
