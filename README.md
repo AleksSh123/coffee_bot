@@ -18,8 +18,18 @@ Minimal Telegram bot on Node.js. It authenticates with Telegram, logs in to the 
 - `TASTY_PRIVACY_AGREEMENT` - boolean flag sent to the login endpoint, default `true`
 - `TASTY_API_BASE_URL` - API base URL, default `https://api.tastycoffee.ru/api/v1`
 - `TASTY_CATALOG_SORT` - catalog sort query, default `name-asc`
+- `CATALOG_REFRESH_INTERVAL_MS` - forced catalog refresh interval in milliseconds, default `86400000` (once per day)
+- `ALERT_USERNAME` - optional name used in the scheduled channel greeting; when empty the greeting starts with `Привет!`
+- `PROMOTIONS_CHANNEL_ID` - Telegram channel id or `@channel_username`; enables scheduled channel posting when set
+- `PROMOTIONS_SCHEDULE_TIME` - daily publish time in `HH:MM`, default `09:00`
+- `PROMOTIONS_SCHEDULE_TIMEZONE` - IANA timezone for the schedule, default `Asia/Krasnoyarsk`
+- `PROMOTIONS_SCHEDULE_CHECK_INTERVAL_MS` - scheduler polling interval in milliseconds, default `30000`
+- `PROMOTIONS_SCHEDULE_STATE_FILE` - local file used to remember the last published slot, default `.runtime/promotions-schedule.json`
 
 The application automatically reads variables from `.env` if the file exists.
+
+The bot also performs a forced background catalog refresh once per day by default, even if nobody requests the catalog.
+The bot stores the timestamp of the last successful catalog refresh and can return it in a private chat.
 
 ## Telegram Usage
 
@@ -31,7 +41,21 @@ In private chats the bot shows a reply keyboard with:
 - `Сорт месяца` - only products with the `Сорт месяца` label
 - `Микролот недели` - only products with the `Микролот недели` label
 
+- `Время обновления` - last successful catalog refresh time
+
 In group chats and supergroups the bot does not send a reply keyboard and responds only to the command `/акции`.
+
+## Scheduled Channel Posting
+
+If `PROMOTIONS_CHANNEL_ID` is set, the bot publishes the same content as `/акции` to the configured Telegram channel once per day at `PROMOTIONS_SCHEDULE_TIME`.
+Before each scheduled publish, the bot forces a fresh Tasty Coffee login if needed and reloads categories plus catalog data, so the channel receives the latest promotions snapshot.
+
+Scheduled posts prepend a greeting:
+
+- `Приветствую <ALERT_USERNAME>!` followed by `Вот список акционных товаров на новой неделе.` when `ALERT_USERNAME` is set
+- `Привет!` followed by `Вот список акционных товаров на новой неделе.` when `ALERT_USERNAME` is empty
+
+To avoid duplicate posts after restarts, the bot stores the last successful schedule slot in `.runtime/promotions-schedule.json` by default.
 
 ## Local Run
 

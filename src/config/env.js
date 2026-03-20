@@ -56,6 +56,33 @@ function parseBoolean(value, defaultValue) {
   return defaultValue;
 }
 
+function parsePositiveInteger(value, defaultValue) {
+  const parsedValue = Number.parseInt(value ?? "", 10);
+
+  if (Number.isFinite(parsedValue) && parsedValue > 0) {
+    return parsedValue;
+  }
+
+  return defaultValue;
+}
+
+function parseScheduleTime(value, fallback = "09:00") {
+  const normalizedValue = value ?? fallback;
+  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(normalizedValue);
+
+  if (!match) {
+    throw new Error(
+      `PROMOTIONS_SCHEDULE_TIME must be in HH:MM format, received "${normalizedValue}"`
+    );
+  }
+
+  return {
+    timeLabel: normalizedValue,
+    hour: Number.parseInt(match[1], 10),
+    minute: Number.parseInt(match[2], 10)
+  };
+}
+
 function requireEnv(name) {
   const value = process.env[name];
 
@@ -74,6 +101,11 @@ export function loadConfig() {
   const tastyLogin = requireEnv("TASTY_LOGIN");
   const tastyPassword = requireEnv("TASTY_PASSWORD");
   const isRunningInDocker = existsSync("/.dockerenv");
+  const promotionsScheduleTime = parseScheduleTime(process.env.PROMOTIONS_SCHEDULE_TIME);
+  const promotionsScheduleTimeZone =
+    process.env.PROMOTIONS_SCHEDULE_TIMEZONE ?? "Asia/Krasnoyarsk";
+  const promotionsChannelId = process.env.PROMOTIONS_CHANNEL_ID?.trim() ?? "";
+  const alertUsername = process.env.ALERT_USERNAME?.trim() ?? "";
 
   return {
     logging: {
@@ -81,6 +113,10 @@ export function loadConfig() {
         process.env.LOG_TELEGRAM_MESSAGES,
         !isRunningInDocker
       )
+    },
+    catalogRefresh: {
+      intervalMs: parsePositiveInteger(process.env.CATALOG_REFRESH_INTERVAL_MS, 86_400_000),
+      timeZone: promotionsScheduleTimeZone
     },
     telegram: {
       token: telegramToken,
@@ -93,6 +129,21 @@ export function loadConfig() {
       login: tastyLogin,
       password: tastyPassword,
       privacyAgreement: parseBoolean(process.env.TASTY_PRIVACY_AGREEMENT ?? "true", true)
+    },
+    promotionsSchedule: {
+      enabled: promotionsChannelId.length > 0,
+      alertUsername,
+      channelId: promotionsChannelId,
+      timeLabel: promotionsScheduleTime.timeLabel,
+      hour: promotionsScheduleTime.hour,
+      minute: promotionsScheduleTime.minute,
+      timeZone: promotionsScheduleTimeZone,
+      checkIntervalMs: parsePositiveInteger(
+        process.env.PROMOTIONS_SCHEDULE_CHECK_INTERVAL_MS,
+        30_000
+      ),
+      stateFilePath:
+        process.env.PROMOTIONS_SCHEDULE_STATE_FILE ?? ".runtime/promotions-schedule.json"
     }
   };
 }

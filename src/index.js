@@ -5,6 +5,8 @@ import { loadConfig } from "./config/env.js";
 import { formatError } from "./lib/errors.js";
 import { fetchJson } from "./lib/http.js";
 import { createMessageLogger } from "./lib/message-logger.js";
+import { createCatalogRefreshScheduler } from "./scheduler/catalog-refresh.js";
+import { createPromotionsScheduler } from "./scheduler/promotions.js";
 import { createTastyAuthService } from "./services/tasty-auth.js";
 import { createCatalogService } from "./services/tasty-catalog.js";
 import { createStore } from "./state/store.js";
@@ -34,11 +36,24 @@ const catalogService = createCatalogService({
   fetchJson
 });
 
-const { handleUpdate } = createBotHandlers({
+const { handleUpdate, sendCatalogByButton } = createBotHandlers({
   catalogService,
   telegramClient,
   formatError,
   messageLogger
+});
+
+const promotionsScheduler = createPromotionsScheduler({
+  state,
+  config,
+  sendCatalogByButton,
+  formatError
+});
+const catalogRefreshScheduler = createCatalogRefreshScheduler({
+  state,
+  config,
+  catalogService,
+  formatError
 });
 
 const { pollUpdates, shutdown } = createPolling({
@@ -49,8 +64,14 @@ const { pollUpdates, shutdown } = createPolling({
   formatError
 });
 
-process.on("SIGINT", () => shutdown("SIGINT"));
-process.on("SIGTERM", () => shutdown("SIGTERM"));
+function shutdownApp(signal) {
+  catalogRefreshScheduler.stop();
+  promotionsScheduler.stop();
+  shutdown(signal);
+}
+
+process.on("SIGINT", () => shutdownApp("SIGINT"));
+process.on("SIGTERM", () => shutdownApp("SIGTERM"));
 
 console.log("Telegram bot is starting");
 await telegramClient.verifyBot();
@@ -61,4 +82,6 @@ try {
   console.error(`Initial Tasty Coffee sync failed: ${formatError(error)}`);
 }
 
+catalogRefreshScheduler.start();
+promotionsScheduler.start();
 await pollUpdates();

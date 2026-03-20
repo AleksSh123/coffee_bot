@@ -1,17 +1,20 @@
 export const defaultCatalogTitle = "Tasty Coffee";
-export const promotionsGroupCommand = "/акции";
+export const promotionsGroupCommand = "/\u0430\u043a\u0446\u0438\u0438";
 
-export const priceButtonLabel = "Прайс";
-export const promotionsButtonLabel = "Акции";
-export const sortOfWeekButtonLabel = "Сорт недели";
-export const sortOfMonthButtonLabel = "Сорт месяца";
-export const microlotOfWeekButtonLabel = "Микролот недели";
+export const priceButtonLabel = "\u041f\u0440\u0430\u0439\u0441";
+export const promotionsButtonLabel = "\u0410\u043a\u0446\u0438\u0438";
+export const sortOfWeekButtonLabel = "\u0421\u043e\u0440\u0442 \u043d\u0435\u0434\u0435\u043b\u0438";
+export const sortOfMonthButtonLabel = "\u0421\u043e\u0440\u0442 \u043c\u0435\u0441\u044f\u0446\u0430";
+export const microlotOfWeekButtonLabel =
+  "\u041c\u0438\u043a\u0440\u043e\u043b\u043e\u0442 \u043d\u0435\u0434\u0435\u043b\u0438";
+export const catalogUpdatedAtButtonLabel =
+  "\u0412\u0440\u0435\u043c\u044f \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u044f";
 
 export const catalogButtonConfigs = [
   {
     buttonLabel: priceButtonLabel,
     headerTitle: defaultCatalogTitle,
-    emptyMessage: "Каталог пока пуст."
+    emptyMessage: "\u041a\u0430\u0442\u0430\u043b\u043e\u0433 \u043f\u043e\u043a\u0430 \u043f\u0443\u0441\u0442."
   },
   {
     buttonLabel: promotionsButtonLabel,
@@ -22,30 +25,37 @@ export const catalogButtonConfigs = [
       sortOfWeekButtonLabel,
       sortOfMonthButtonLabel
     ],
-    emptyMessage: "Сейчас в каталоге нет акционных позиций."
+    emptyMessage:
+      "\u0421\u0435\u0439\u0447\u0430\u0441 \u0432 \u043a\u0430\u0442\u0430\u043b\u043e\u0433\u0435 \u043d\u0435\u0442 \u0430\u043a\u0446\u0438\u043e\u043d\u043d\u044b\u0445 \u043f\u043e\u0437\u0438\u0446\u0438\u0439."
   },
   {
     buttonLabel: sortOfWeekButtonLabel,
     headerTitle: sortOfWeekButtonLabel,
     labelName: sortOfWeekButtonLabel,
-    emptyMessage: "Сейчас в каталоге нет позиций с меткой «Сорт недели»."
+    emptyMessage:
+      "\u0421\u0435\u0439\u0447\u0430\u0441 \u0432 \u043a\u0430\u0442\u0430\u043b\u043e\u0433\u0435 \u043d\u0435\u0442 \u043f\u043e\u0437\u0438\u0446\u0438\u0439 \u0441 \u043c\u0435\u0442\u043a\u043e\u0439 \u00ab\u0421\u043e\u0440\u0442 \u043d\u0435\u0434\u0435\u043b\u0438\u00bb."
   },
   {
     buttonLabel: sortOfMonthButtonLabel,
     headerTitle: sortOfMonthButtonLabel,
     labelName: sortOfMonthButtonLabel,
-    emptyMessage: "Сейчас в каталоге нет позиций с меткой «Сорт месяца»."
+    emptyMessage:
+      "\u0421\u0435\u0439\u0447\u0430\u0441 \u0432 \u043a\u0430\u0442\u0430\u043b\u043e\u0433\u0435 \u043d\u0435\u0442 \u043f\u043e\u0437\u0438\u0446\u0438\u0439 \u0441 \u043c\u0435\u0442\u043a\u043e\u0439 \u00ab\u0421\u043e\u0440\u0442 \u043c\u0435\u0441\u044f\u0446\u0430\u00bb."
   },
   {
     buttonLabel: microlotOfWeekButtonLabel,
     headerTitle: microlotOfWeekButtonLabel,
     labelName: microlotOfWeekButtonLabel,
-    emptyMessage: "Сейчас в каталоге нет позиций с меткой «Микролот недели»."
+    emptyMessage:
+      "\u0421\u0435\u0439\u0447\u0430\u0441 \u0432 \u043a\u0430\u0442\u0430\u043b\u043e\u0433\u0435 \u043d\u0435\u0442 \u043f\u043e\u0437\u0438\u0446\u0438\u0439 \u0441 \u043c\u0435\u0442\u043a\u043e\u0439 \u00ab\u041c\u0438\u043a\u0440\u043e\u043b\u043e\u0442 \u043d\u0435\u0434\u0435\u043b\u0438\u00bb."
   }
 ];
 
 export const promptMessage =
-  "Выберите кнопку: полный прайс или одну из тематических подборок.";
+  "\u0412\u044b\u0431\u0435\u0440\u0438\u0442\u0435 \u043a\u043d\u043e\u043f\u043a\u0443: \u043f\u043e\u043b\u043d\u044b\u0439 \u043f\u0440\u0430\u0439\u0441, \u043e\u0434\u043d\u0443 \u0438\u0437 \u0442\u0435\u043c\u0430\u0442\u0438\u0447\u0435\u0441\u043a\u0438\u0445 \u043f\u043e\u0434\u0431\u043e\u0440\u043e\u043a \u0438\u043b\u0438 \u0432\u0440\u0435\u043c\u044f \u043f\u043e\u0441\u043b\u0435\u0434\u043d\u0435\u0433\u043e \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u044f.";
 
 export const catalogUnavailableMessage =
-  "Не удалось загрузить каталог. Попробуйте еще раз чуть позже.";
+  "\u041d\u0435 \u0443\u0434\u0430\u043b\u043e\u0441\u044c \u0437\u0430\u0433\u0440\u0443\u0437\u0438\u0442\u044c \u043a\u0430\u0442\u0430\u043b\u043e\u0433. \u041f\u043e\u043f\u0440\u043e\u0431\u0443\u0439\u0442\u0435 \u0435\u0449\u0435 \u0440\u0430\u0437 \u0447\u0443\u0442\u044c \u043f\u043e\u0437\u0436\u0435.";
+
+export const catalogNotUpdatedYetMessage =
+  "\u0412\u0440\u0435\u043c\u044f \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d\u0438\u044f \u043a\u0430\u0442\u0430\u043b\u043e\u0433\u0430 \u0435\u0449\u0435 \u043d\u0435 \u0437\u0430\u0444\u0438\u043a\u0441\u0438\u0440\u043e\u0432\u0430\u043d\u043e.";

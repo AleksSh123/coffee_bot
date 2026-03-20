@@ -14,6 +14,19 @@ function getResponseItems(response) {
 }
 
 export function createCatalogService({ state, config, authService, fetchJson }) {
+  function formatRefreshTimestamp(timestamp) {
+    return new Intl.DateTimeFormat("ru-RU", {
+      timeZone: config.catalogRefresh.timeZone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: false
+    }).format(new Date(timestamp));
+  }
+
   async function fetchCategories() {
     const response = await fetchJson(`${config.tasty.apiBaseUrl}/catalog/categories`, {
       headers: {
@@ -51,15 +64,17 @@ export function createCatalogService({ state, config, authService, fetchJson }) 
 
   async function fetchCatalogData() {
     const [categoriesById, items] = await Promise.all([fetchCategories(), fetchCatalog()]);
+    const lastRefreshedAt = Date.now();
 
     state.catalog = {
       items,
       categoriesById,
-      messages: buildCatalogMessagesWithTitle(items, defaultCatalogTitle, categoriesById)
+      messages: buildCatalogMessagesWithTitle(items, defaultCatalogTitle, categoriesById),
+      lastRefreshedAt
     };
 
     console.log(
-      `Tasty Coffee catalog loaded: ${items.length} items, ${categoriesById.size} categories`
+      `Tasty Coffee catalog loaded: ${items.length} items, ${categoriesById.size} categories, refreshed at ${new Date(lastRefreshedAt).toISOString()}`
     );
   }
 
@@ -107,6 +122,17 @@ export function createCatalogService({ state, config, authService, fetchJson }) 
   }
 
   return {
-    ensureCatalogReady
+    ensureCatalogReady,
+    getLastRefreshInfo() {
+      if (!state.catalog.lastRefreshedAt) {
+        return null;
+      }
+
+      return {
+        timestamp: state.catalog.lastRefreshedAt,
+        formatted: formatRefreshTimestamp(state.catalog.lastRefreshedAt),
+        timeZone: config.catalogRefresh.timeZone
+      };
+    }
   };
 }

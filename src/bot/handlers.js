@@ -4,6 +4,8 @@ import {
 } from "../catalog/formatters.js";
 import { filterCatalogItems, getCatalogConfigByButton } from "../catalog/filters.js";
 import {
+  catalogNotUpdatedYetMessage,
+  catalogUpdatedAtButtonLabel,
   catalogUnavailableMessage,
   promptMessage,
   promotionsButtonLabel,
@@ -11,6 +13,14 @@ import {
 } from "../config/constants.js";
 
 export function createBotHandlers({ catalogService, telegramClient, formatError, messageLogger }) {
+  function prependMessagePrefix(messages, messagePrefix) {
+    if (!messagePrefix || messages.length === 0) {
+      return messages;
+    }
+
+    return [`${messagePrefix}\n\n${messages[0]}`, ...messages.slice(1)];
+  }
+
   function isPrivateChat(chat) {
     return chat?.type === "private";
   }
@@ -34,14 +44,27 @@ export function createBotHandlers({ catalogService, telegramClient, formatError,
     return normalizedText === `${promotionsGroupCommand}@${botUsername}`;
   }
 
-  async function sendCatalogByButton(chat, buttonLabel) {
+  function buildCatalogRefreshMessage() {
+    const refreshInfo = catalogService.getLastRefreshInfo();
+
+    if (!refreshInfo) {
+      return catalogNotUpdatedYetMessage;
+    }
+
+    return (
+      `\u041a\u0430\u0442\u0430\u043b\u043e\u0433 \u043e\u0431\u043d\u043e\u0432\u043b\u0435\u043d: ${refreshInfo.formatted}\n` +
+      `\u0427\u0430\u0441\u043e\u0432\u043e\u0439 \u043f\u043e\u044f\u0441: ${refreshInfo.timeZone}`
+    );
+  }
+
+  async function sendCatalogByButton(chat, buttonLabel, options = {}) {
     const config = getCatalogConfigByButton(buttonLabel);
 
     if (!config) {
       return false;
     }
 
-    const catalog = await catalogService.ensureCatalogReady();
+    const catalog = await catalogService.ensureCatalogReady(Boolean(options.forceRefresh));
     const filteredItems = filterCatalogItems(catalog.items, config);
     const includeKeyboard = isPrivateChat(chat);
 
@@ -70,6 +93,8 @@ export function createBotHandlers({ catalogService, telegramClient, formatError,
       );
     }
 
+    messages = prependMessagePrefix(messages, options.messagePrefix);
+
     for (const message of messages) {
       await telegramClient.sendMessage(chat.id, message, {
         chatType: chat.type,
@@ -88,16 +113,24 @@ export function createBotHandlers({ catalogService, telegramClient, formatError,
 
     const { chat, text } = update.message;
     messageLogger.logIncoming({
-      chatId: chat.id,
-      chatType: chat.type,
-      text
+      updateId: update.update_id,
+      message: update.message
     });
     const isPrivate = isPrivateChat(chat);
+    const isCatalogUpdatedAtRequest = isPrivate && text === catalogUpdatedAtButtonLabel;
     const requestedButton = isPrivate
       ? getCatalogConfigByButton(text)?.buttonLabel
       : isGroupPromotionsCommand(text)
         ? promotionsButtonLabel
         : null;
+
+    if (isCatalogUpdatedAtRequest) {
+      await telegramClient.sendMessage(chat.id, buildCatalogRefreshMessage(), {
+        chatType: chat.type,
+        includeKeyboard: true
+      });
+      return;
+    }
 
     if (requestedButton) {
       try {

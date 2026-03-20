@@ -10,7 +10,8 @@ export function createStore() {
     catalog: {
       items: [],
       messages: [],
-      categoriesById: new Map()
+      categoriesById: new Map(),
+      lastRefreshedAt: 0
     },
     refreshPromise: null
   };

@@ -1,4 +1,5 @@
 import {
+  catalogUpdatedAtButtonLabel,
   microlotOfWeekButtonLabel,
   priceButtonLabel,
   promotionsButtonLabel,
@@ -11,7 +12,7 @@ function buildMainKeyboard() {
     keyboard: [
       [{ text: priceButtonLabel }, { text: promotionsButtonLabel }],
       [{ text: sortOfWeekButtonLabel }, { text: sortOfMonthButtonLabel }],
-      [{ text: microlotOfWeekButtonLabel }]
+      [{ text: microlotOfWeekButtonLabel }, { text: catalogUpdatedAtButtonLabel }]
     ],
     resize_keyboard: true,
     one_time_keyboard: false
@@ -51,11 +52,11 @@ export function createTelegramClient({ apiBaseUrl, fetchJson, messageLogger }) {
       payload.parse_mode = options.parseMode;
     }
 
-    await callApi("sendMessage", payload);
+    const responseMessage = await callApi("sendMessage", payload);
     messageLogger.logOutgoing({
-      chatId,
       chatType: options.chatType,
-      text
+      request: payload,
+      responseMessage
     });
   }
 
