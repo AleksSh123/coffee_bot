@@ -6,9 +6,15 @@ function normalizeTokenType(value) {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
-export function createTastyAuthService({ state, config, fetchJson }) {
+export function createTastyAuthService({ state, config, fetchJson, logger }) {
   async function login() {
+    logger.info("tasty.auth.login.start", {
+      api_base_url: config.tasty.apiBaseUrl,
+      login: config.tasty.login
+    });
+
     const response = await fetchJson(`${config.tasty.apiBaseUrl}/auth/login`, {
+      logContext: "tasty.auth.login",
       method: "POST",
       headers: {
         "Content-Type": "application/json"
@@ -29,17 +35,23 @@ export function createTastyAuthService({ state, config, fetchJson }) {
     }
 
     const refreshSkewMs = 60_000;
-    const expiresInMs = Number.isFinite(expiresInSeconds) && expiresInSeconds > 0
-      ? expiresInSeconds * 1000
-      : 0;
+    const expiresInMs =
+      Number.isFinite(expiresInSeconds) && expiresInSeconds > 0
+        ? expiresInSeconds * 1000
+        : 0;
+    const expiresAt = Date.now() + Math.max(0, expiresInMs - refreshSkewMs);
 
     state.auth = {
       accessToken,
       tokenType: normalizeTokenType(data?.token_type),
-      expiresAt: Date.now() + Math.max(0, expiresInMs - refreshSkewMs)
+      expiresAt
     };
 
-    console.log("Tasty Coffee token refreshed");
+    logger.info("tasty.auth.login.success", {
+      expires_in_seconds: expiresInSeconds,
+      expires_at: new Date(expiresAt).toISOString(),
+      token_type: state.auth.tokenType
+    });
   }
 
   function hasValidToken() {

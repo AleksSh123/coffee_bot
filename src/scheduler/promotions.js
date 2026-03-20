@@ -78,7 +78,8 @@ export function createPromotionsScheduler({
   state,
   config,
   sendCatalogByButton,
-  formatError
+  formatError,
+  logger
 }) {
   const scheduleConfig = config.promotionsSchedule;
   let timerId = null;
@@ -145,11 +146,16 @@ export function createPromotionsScheduler({
           }
 
           markPublished(slotKey);
-          console.log(
-            `Scheduled promotions published to ${scheduleConfig.channelId} for ${slotKey}`
-          );
+          logger.info("promotions.scheduler.published", {
+            channel_id: scheduleConfig.channelId,
+            slot_key: slotKey
+          });
         } catch (error) {
-          console.error(`Scheduled promotions publish failed: ${formatError(error)}`);
+          logger.error("promotions.scheduler.failed", {
+            channel_id: scheduleConfig.channelId,
+            slot_key: slotKey,
+            error: formatError(error)
+          });
         } finally {
           publishPromise = null;
         }
@@ -161,14 +167,16 @@ export function createPromotionsScheduler({
 
   function start() {
     if (!isEnabled()) {
-      console.log("Scheduled promotions publishing is disabled");
+      logger.info("promotions.scheduler.disabled");
       return;
     }
 
-    console.log(
-      `Scheduled promotions publishing enabled for ${scheduleConfig.channelId} ` +
-      `at ${scheduleConfig.timeLabel} (${scheduleConfig.timeZone})`
-    );
+    logger.info("promotions.scheduler.started", {
+      channel_id: scheduleConfig.channelId,
+      time_label: scheduleConfig.timeLabel,
+      time_zone: scheduleConfig.timeZone,
+      check_interval_ms: scheduleConfig.checkIntervalMs
+    });
 
     timerId = setInterval(() => {
       void publishIfDue();
@@ -184,6 +192,7 @@ export function createPromotionsScheduler({
 
     clearInterval(timerId);
     timerId = null;
+    logger.info("promotions.scheduler.stopped");
   }
 
   return {

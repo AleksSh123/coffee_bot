@@ -4,4 +4,8 @@ services:
     container_name: coffee-bot
     env_file:
       - .env
+    environment:
+      LOG_FILE_PATH: /app/logs/app.log
     restart: unless-stopped
+    volumes:
+      - ./logs:/app/logs

@@ -13,7 +13,7 @@ function getResponseItems(response) {
   return null;
 }
 
-export function createCatalogService({ state, config, authService, fetchJson }) {
+export function createCatalogService({ state, config, authService, fetchJson, logger }) {
   function formatRefreshTimestamp(timestamp) {
     return new Intl.DateTimeFormat("ru-RU", {
       timeZone: config.catalogRefresh.timeZone,
@@ -29,6 +29,7 @@ export function createCatalogService({ state, config, authService, fetchJson }) 
 
   async function fetchCategories() {
     const response = await fetchJson(`${config.tasty.apiBaseUrl}/catalog/categories`, {
+      logContext: "tasty.catalog.categories",
       headers: {
         Authorization: authService.getAuthorizationHeader()
       }
@@ -47,6 +48,7 @@ export function createCatalogService({ state, config, authService, fetchJson }) 
     const response = await fetchJson(
       `${config.tasty.apiBaseUrl}/catalog/products?sort=${encodeURIComponent(config.tasty.catalogSort)}`,
       {
+        logContext: "tasty.catalog.products",
         headers: {
           Authorization: authService.getAuthorizationHeader()
         }
@@ -63,6 +65,7 @@ export function createCatalogService({ state, config, authService, fetchJson }) 
   }
 
   async function fetchCatalogData() {
+    const startedAt = Date.now();
     const [categoriesById, items] = await Promise.all([fetchCategories(), fetchCatalog()]);
     const lastRefreshedAt = Date.now();
 
@@ -73,12 +76,20 @@ export function createCatalogService({ state, config, authService, fetchJson }) 
       lastRefreshedAt
     };
 
-    console.log(
-      `Tasty Coffee catalog loaded: ${items.length} items, ${categoriesById.size} categories, refreshed at ${new Date(lastRefreshedAt).toISOString()}`
-    );
+    logger.info("catalog.sync.success", {
+      items_count: items.length,
+      categories_count: categoriesById.size,
+      refreshed_at: new Date(lastRefreshedAt).toISOString(),
+      duration_ms: lastRefreshedAt - startedAt
+    });
   }
 
   async function refreshCatalogCache(forceLogin) {
+    logger.info("catalog.sync.start", {
+      force_login: forceLogin,
+      has_valid_token: authService.hasValidToken()
+    });
+
     if (forceLogin || !authService.hasValidToken()) {
       await authService.login();
     }
@@ -87,11 +98,18 @@ export function createCatalogService({ state, config, authService, fetchJson }) 
       await fetchCatalogData();
     } catch (error) {
       if (!forceLogin && error?.status === 401) {
+        logger.warn("catalog.sync.retry_after_unauthorized", {
+          error_status: error.status
+        });
         await authService.login();
         await fetchCatalogData();
         return;
       }
 
+      logger.error("catalog.sync.failed", {
+        error: error instanceof Error ? error.message : String(error),
+        status: error?.status
+      });
       throw error;
     }
   }

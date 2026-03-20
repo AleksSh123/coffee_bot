@@ -12,7 +12,13 @@ import {
   promotionsGroupCommand
 } from "../config/constants.js";
 
-export function createBotHandlers({ catalogService, telegramClient, formatError, messageLogger }) {
+export function createBotHandlers({
+  catalogService,
+  telegramClient,
+  formatError,
+  logger,
+  messageLogger
+}) {
   function prependMessagePrefix(messages, messagePrefix) {
     if (!messagePrefix || messages.length === 0) {
       return messages;
@@ -136,7 +142,12 @@ export function createBotHandlers({ catalogService, telegramClient, formatError,
       try {
         await sendCatalogByButton(chat, requestedButton);
       } catch (error) {
-        console.error(`Catalog send failed: ${formatError(error)}`);
+        logger.error("catalog.send.failed", {
+          chat_id: chat.id,
+          chat_type: chat.type,
+          requested_button: requestedButton,
+          error: formatError(error)
+        });
         await telegramClient.sendMessage(chat.id, catalogUnavailableMessage, {
           chatType: chat.type,
           includeKeyboard: isPrivate

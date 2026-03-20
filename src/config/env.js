@@ -109,6 +109,7 @@ export function loadConfig() {
 
   return {
     logging: {
+      filePath: process.env.LOG_FILE_PATH?.trim() || null,
       echoTelegramMessages: parseBoolean(
         process.env.LOG_TELEGRAM_MESSAGES,
         !isRunningInDocker

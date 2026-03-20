@@ -12,7 +12,8 @@ Minimal Telegram bot on Node.js. It authenticates with Telegram, logs in to the 
 
 - `TELEGRAM_BOT_TOKEN` - Telegram bot token
 - `TELEGRAM_POLL_TIMEOUT` - long polling timeout in seconds, default `30`
-- `LOG_TELEGRAM_MESSAGES` - duplicates incoming and outgoing Telegram messages to console; defaults to `true` outside Docker and `false` in Docker
+- `LOG_FILE_PATH` - optional path to a log file with pretty-printed JSON records; when set, logs are written both to console and to this file
+- `LOG_TELEGRAM_MESSAGES` - adds incoming and outgoing Telegram message payloads to the application log; defaults to `true` outside Docker and `false` in Docker
 - `TASTY_LOGIN` - login for `https://api.tastycoffee.ru/api/v1/auth/login`
 - `TASTY_PASSWORD` - password for `https://api.tastycoffee.ru/api/v1/auth/login`
 - `TASTY_PRIVACY_AGREEMENT` - boolean flag sent to the login endpoint, default `true`
@@ -30,6 +31,7 @@ The application automatically reads variables from `.env` if the file exists.
 
 The bot also performs a forced background catalog refresh once per day by default, even if nobody requests the catalog.
 The bot stores the timestamp of the last successful catalog refresh and can return it in a private chat.
+HTTP requests and responses are logged with sensitive fields redacted, and catalog synchronization emits dedicated events.
 
 ## Telegram Usage
 
@@ -84,7 +86,7 @@ docker build -t coffee-bot .
 Run the container:
 
 ```bash
-docker run --rm --env-file .env coffee-bot
+docker run --rm --env-file .env -e LOG_FILE_PATH=/app/logs/app.log -v "$(pwd)/logs:/app/logs" coffee-bot
 ```
 
 ## Docker Compose
@@ -94,3 +96,5 @@ Create `.env` from `.env.example`, put your real values into it, then start:
 ```bash
 docker compose up --build -d
 ```
+
+With `docker compose`, logs are also persisted on the host in `./logs/app.log`.

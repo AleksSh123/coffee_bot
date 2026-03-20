@@ -1,4 +1,11 @@
-export function createPolling({ state, pollTimeout, telegramClient, handleUpdate, formatError }) {
+export function createPolling({
+  state,
+  pollTimeout,
+  telegramClient,
+  handleUpdate,
+  formatError,
+  logger
+}) {
   async function pollUpdates() {
     while (!state.isShuttingDown) {
       try {
@@ -13,14 +20,18 @@ export function createPolling({ state, pollTimeout, telegramClient, handleUpdate
           await handleUpdate(update);
         }
       } catch (error) {
-        console.error(formatError(error));
+        logger.error("telegram.polling.failed", {
+          error: formatError(error)
+        });
         await new Promise((resolve) => setTimeout(resolve, 3000));
       }
     }
   }
 
   function shutdown(signal) {
-    console.log(`Received ${signal}, shutting down`);
+    logger.info("app.shutdown.requested", {
+      signal
+    });
     state.isShuttingDown = true;
   }
 

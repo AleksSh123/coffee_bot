@@ -19,11 +19,12 @@ function buildMainKeyboard() {
   };
 }
 
-export function createTelegramClient({ apiBaseUrl, fetchJson, messageLogger }) {
+export function createTelegramClient({ apiBaseUrl, fetchJson, logger, messageLogger }) {
   let botUsername = null;
 
   async function callApi(method, payload) {
     const data = await fetchJson(`${apiBaseUrl}/${method}`, {
+      logContext: `telegram.${method}`,
       method: "POST",
       headers: {
         "Content-Type": "application/json"
@@ -71,7 +72,10 @@ export function createTelegramClient({ apiBaseUrl, fetchJson, messageLogger }) {
   async function verifyBot() {
     const bot = await callApi("getMe", {});
     botUsername = bot.username ?? null;
-    console.log(`Authorized as @${bot.username}`);
+    logger.info("telegram.bot.authorized", {
+      bot_id: bot.id,
+      bot_username: bot.username
+    });
     return bot;
   }
 

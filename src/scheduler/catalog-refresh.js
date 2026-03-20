@@ -2,7 +2,8 @@ export function createCatalogRefreshScheduler({
   state,
   config,
   catalogService,
-  formatError
+  formatError,
+  logger
 }) {
   const refreshConfig = config.catalogRefresh;
   let timerId = null;
@@ -17,9 +18,13 @@ export function createCatalogRefreshScheduler({
       refreshPromise = (async () => {
         try {
           await catalogService.ensureCatalogReady(true);
-          console.log("Scheduled catalog refresh completed");
+          logger.info("catalog.refresh_scheduler.completed", {
+            interval_ms: refreshConfig.intervalMs
+          });
         } catch (error) {
-          console.error(`Scheduled catalog refresh failed: ${formatError(error)}`);
+          logger.error("catalog.refresh_scheduler.failed", {
+            error: formatError(error)
+          });
         } finally {
           refreshPromise = null;
         }
@@ -30,9 +35,9 @@ export function createCatalogRefreshScheduler({
   }
 
   function start() {
-    console.log(
-      `Scheduled catalog refresh enabled (${refreshConfig.intervalMs} ms interval)`
-    );
+    logger.info("catalog.refresh_scheduler.started", {
+      interval_ms: refreshConfig.intervalMs
+    });
 
     timerId = setInterval(() => {
       void refreshCatalog();
@@ -46,6 +51,7 @@ export function createCatalogRefreshScheduler({
 
     clearInterval(timerId);
     timerId = null;
+    logger.info("catalog.refresh_scheduler.stopped");
   }
 
   return {

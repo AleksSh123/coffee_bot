@@ -4,6 +4,7 @@ import { createTelegramClient } from "./clients/telegram.js";
 import { loadConfig } from "./config/env.js";
 import { formatError } from "./lib/errors.js";
 import { fetchJson } from "./lib/http.js";
+import { createAppLogger } from "./lib/logger.js";
 import { createMessageLogger } from "./lib/message-logger.js";
 import { createCatalogRefreshScheduler } from "./scheduler/catalog-refresh.js";
 import { createPromotionsScheduler } from "./scheduler/promotions.js";
@@ -13,33 +14,46 @@ import { createStore } from "./state/store.js";
 
 const config = loadConfig();
 const state = createStore();
+const logger = createAppLogger({
+  filePath: config.logging.filePath
+});
+const loggedFetchJson = (url, options = {}) =>
+  fetchJson(url, {
+    ...options,
+    logger
+  });
 const messageLogger = createMessageLogger({
-  enabled: config.logging.echoTelegramMessages
+  enabled: config.logging.echoTelegramMessages,
+  logger
 });
 
 const telegramClient = createTelegramClient({
   apiBaseUrl: config.telegram.apiBaseUrl,
-  fetchJson,
+  fetchJson: loggedFetchJson,
+  logger,
   messageLogger
 });
 
 const tastyAuthService = createTastyAuthService({
   state,
   config,
-  fetchJson
+  fetchJson: loggedFetchJson,
+  logger
 });
 
 const catalogService = createCatalogService({
   state,
   config,
   authService: tastyAuthService,
-  fetchJson
+  fetchJson: loggedFetchJson,
+  logger
 });
 
 const { handleUpdate, sendCatalogByButton } = createBotHandlers({
   catalogService,
   telegramClient,
   formatError,
+  logger,
   messageLogger
 });
 
@@ -47,13 +61,15 @@ const promotionsScheduler = createPromotionsScheduler({
   state,
   config,
   sendCatalogByButton,
-  formatError
+  formatError,
+  logger
 });
 const catalogRefreshScheduler = createCatalogRefreshScheduler({
   state,
   config,
   catalogService,
-  formatError
+  formatError,
+  logger
 });
 
 const { pollUpdates, shutdown } = createPolling({
@@ -61,7 +77,8 @@ const { pollUpdates, shutdown } = createPolling({
   pollTimeout: config.telegram.pollTimeout,
   telegramClient,
   handleUpdate,
-  formatError
+  formatError,
+  logger
 });
 
 function shutdownApp(signal) {
@@ -73,13 +90,18 @@ function shutdownApp(signal) {
 process.on("SIGINT", () => shutdownApp("SIGINT"));
 process.on("SIGTERM", () => shutdownApp("SIGTERM"));
 
-console.log("Telegram bot is starting");
+logger.info("app.starting", {
+  node_env: process.env.NODE_ENV ?? null,
+  log_file_path: config.logging.filePath
+});
 await telegramClient.verifyBot();
 
 try {
   await catalogService.ensureCatalogReady(true);
 } catch (error) {
-  console.error(`Initial Tasty Coffee sync failed: ${formatError(error)}`);
+  logger.error("catalog.initial_sync.failed", {
+    error: formatError(error)
+  });
 }
 
 catalogRefreshScheduler.start();

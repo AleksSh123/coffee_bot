@@ -94,12 +94,7 @@ function buildOutgoingRecord(payload) {
   });
 }
 
-function logRecord(prefix, record) {
-  console.log(`[telegram:${prefix}] ${record.chat_label ?? "unknown"}`);
-  console.log(JSON.stringify(record, null, 2));
-}
-
-export function createMessageLogger({ enabled }) {
+export function createMessageLogger({ enabled, logger }) {
   if (!enabled) {
     return {
       logIncoming() {},
@@ -109,10 +104,10 @@ export function createMessageLogger({ enabled }) {
 
   return {
     logIncoming(payload) {
-      logRecord("in", buildIncomingRecord(payload));
+      logger.info("telegram.message.in", buildIncomingRecord(payload));
     },
     logOutgoing(payload) {
-      logRecord("out", buildOutgoingRecord(payload));
+      logger.info("telegram.message.out", buildOutgoingRecord(payload));
     }
   };
 }
