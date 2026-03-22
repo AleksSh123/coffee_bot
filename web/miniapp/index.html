@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <title>Coffee Bot Mini App</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script defer src="./app.js"></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="hero">
+        <div class="hero__eyebrow">Coffee Bot Mini App</div>
+        <h1 class="hero__title">Заявка на кофе без переключения из Telegram</h1>
+        <p class="hero__subtitle" id="status-banner">
+          Подключение к вашему профилю Telegram...
+        </p>
+        <div class="hero__meta" id="user-summary"></div>
+      </header>
+
+      <nav class="tabs" id="tabs"></nav>
+
+      <main class="content-grid">
+        <section class="panel panel--catalog" id="catalog-panel">
+          <div class="panel__header">
+            <div>
+              <div class="panel__eyebrow">Каталог</div>
+              <h2 class="panel__title">Подберите позиции в заявку</h2>
+            </div>
+            <button class="ghost-button" id="refresh-button" type="button">Обновить</button>
+          </div>
+          <div class="filters" id="category-filters"></div>
+          <div class="catalog-list" id="catalog-list"></div>
+        </section>
+
+        <section class="panel panel--order" id="draft-panel">
+          <div class="panel__header">
+            <div>
+              <div class="panel__eyebrow">Черновик</div>
+              <h2 class="panel__title">Текущая заявка</h2>
+            </div>
+            <div class="order-total" id="draft-total"></div>
+          </div>
+          <div class="draft-list" id="draft-list"></div>
+          <label class="comment-block" for="draft-comment">
+            <span>Комментарий к заявке</span>
+            <textarea
+              id="draft-comment"
+              rows="4"
+              placeholder="Например: связаться перед доставкой, помол не нужен"
+            ></textarea>
+          </label>
+          <button class="primary-button" id="submit-order-button" type="button">
+            Отправить заявку
+          </button>
+        </section>
+
+        <section class="panel panel--history is-hidden" id="orders-panel">
+          <div class="panel__header">
+            <div>
+              <div class="panel__eyebrow">История</div>
+              <h2 class="panel__title">Ваши заявки</h2>
+            </div>
+          </div>
+          <div class="history-list" id="orders-list"></div>
+        </section>
+
+        <section class="panel panel--admin is-hidden" id="admin-panel">
+          <div class="panel__header">
+            <div>
+              <div class="panel__eyebrow">Администрирование</div>
+              <h2 class="panel__title">Заявки всех пользователей</h2>
+            </div>
+            <button class="ghost-button" id="admin-refresh-button" type="button">
+              Обновить список
+            </button>
+          </div>
+          <div class="filters filters--compact" id="admin-filters"></div>
+          <div class="admin-orders" id="admin-orders-list"></div>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

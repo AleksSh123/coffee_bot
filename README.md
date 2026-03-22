@@ -1,70 +1,107 @@
 # Telegram Price Bot
 
-Minimal Telegram bot on Node.js. It authenticates with Telegram, logs in to the Tasty Coffee API, caches the access token until its expiration window, loads the product catalog together with categories, matches products by `category_id`, groups output by category, and sends either the full catalog or themed selections by button press.
+Минималистичный Telegram-бот на Node.js. Он авторизуется в Telegram, логинится в Tasty Coffee API, кэширует access token до окончания срока действия, загружает каталог товаров вместе с категориями, сопоставляет товары по `category_id`, группирует вывод по категориям и отправляет либо полный каталог, либо тематические подборки по нажатию кнопок.
 
-## Requirements
+## Требования
 
-- Bot token from `@BotFather`
-- Tasty Coffee API credentials
+- токен бота от `@BotFather`
+- учётные данные Tasty Coffee API
 - Docker
 
-## Environment Variables
+## Переменные окружения
 
-- `TELEGRAM_BOT_TOKEN` - Telegram bot token
-- `TELEGRAM_POLL_TIMEOUT` - long polling timeout in seconds, default `30`
-- `LOG_FILE_PATH` - optional path to the main application log file; each application record is written in one line as `timestamp level module event status details`, where `INFO` uses compact details and `DEBUG` keeps the full payload, and when set logs are written both to console and to this file
-- `LOG_LEVEL` - minimum level for the main application log, supported values: `debug`, `info`, `warn`, `error`, default `info`
-- `LOG_TELEGRAM_MESSAGES` - writes incoming and outgoing Telegram message payloads to a separate message log file; defaults to `true` outside Docker and `false` in Docker
-- `LOG_TELEGRAM_MESSAGES_LEVEL` - minimum level for the Telegram message log; `debug` keeps the current detailed payload format, `info` writes only direction, message date, text, sender, and group title for group chats; default `debug`
-- `LOG_TELEGRAM_MESSAGES_FILE_PATH` - optional path to the Telegram message log file; defaults to `telegram-messages.log` next to `LOG_FILE_PATH`, or `.runtime/telegram-messages.log` when `LOG_FILE_PATH` is not set
-- `TASTY_LOGIN` - login for `https://api.tastycoffee.ru/api/v1/auth/login`
-- `TASTY_PASSWORD` - password for `https://api.tastycoffee.ru/api/v1/auth/login`
-- `TASTY_PRIVACY_AGREEMENT` - boolean flag sent to the login endpoint, default `true`
-- `TASTY_API_BASE_URL` - API base URL, default `https://api.tastycoffee.ru/api/v1`
-- `TASTY_CATALOG_SORT` - catalog sort query, default `name-asc`
-- `CATALOG_REFRESH_INTERVAL_MS` - forced catalog refresh interval in milliseconds, default `86400000` (once per day)
-- `ALERT_USERNAME` - optional name used in the scheduled channel greeting; when empty the greeting starts with `Привет!`
-- `PROMOTIONS_CHANNEL_ID` - Telegram channel id or `@channel_username`; enables scheduled channel posting when set
-- `PROMOTIONS_SCHEDULE_TIME` - weekly publish slot in `<weekday> HH:MM`, default `monday 09:00`; accepts English weekday names like `monday`, short forms like `mon`, digits `1..7`, and common Russian weekday names
-- `PROMOTIONS_SCHEDULE_TIMEZONE` - IANA timezone for the schedule, default `Asia/Krasnoyarsk`
-- `PROMOTIONS_SCHEDULE_CHECK_INTERVAL_MS` - scheduler polling interval in milliseconds, default `30000`
-- `PROMOTIONS_SCHEDULE_STATE_FILE` - local file used to remember the last published slot, default `.runtime/promotions-schedule.json`
+- `TELEGRAM_BOT_TOKEN` - токен Telegram-бота
+- `TELEGRAM_POLL_TIMEOUT` - таймаут long polling в секундах, по умолчанию `30`
+- `API_ENABLED` - включает встроенный HTTP API для Telegram Mini App, по умолчанию `false`
+- `HTTP_HOST` - хост привязки HTTP API, по умолчанию `0.0.0.0`
+- `HTTP_PORT` - порт HTTP API, по умолчанию `3000`
+- `MINIAPP_PUBLIC_URL` - публичный HTTPS URL, который Telegram будет открывать для Mini App, например `https://example.com/miniapp`
+- `MINIAPP_BUTTON_TEXT` - текст inline-кнопки запуска Mini App, по умолчанию `Открыть Mini App`
+- `DATABASE_URL` - строка подключения к PostgreSQL для backend Mini App
+- `ADMIN_TELEGRAM_USER_IDS` - список Telegram user id через запятую, которым будет доступна роль администратора в Mini App backend
+- `API_SESSION_SECRET` - необязательный секрет для подписи bearer token API; если не указан, используется токен бота
+- `API_SESSION_TTL_SECONDS` - время жизни bearer token API в секундах, по умолчанию `86400`
+- `MINIAPP_AUTH_MAX_AGE_SECONDS` - максимально допустимый возраст `initData` от Mini App в секундах, по умолчанию `3600`
+- `LOG_FILE_PATH` - необязательный путь к основному файлу логов приложения; каждая запись пишется в одну строку в формате `timestamp level module event status details`, при `INFO` детали компактные, при `DEBUG` сохраняется полный payload, а если путь задан, лог пишется и в консоль, и в файл
+- `LOG_LEVEL` - минимальный уровень основного application log, допустимые значения: `debug`, `info`, `warn`, `error`, по умолчанию `info`
+- `LOG_TELEGRAM_MESSAGES` - пишет входящие и исходящие Telegram message payloads в отдельный файл message log; по умолчанию `true` вне Docker и `false` внутри Docker
+- `LOG_TELEGRAM_MESSAGES_LEVEL` - минимальный уровень Telegram message log; `debug` сохраняет текущий подробный формат payload, `info` пишет только направление, дату сообщения, текст, отправителя и название группы для групповых чатов; по умолчанию `debug`
+- `LOG_TELEGRAM_MESSAGES_FILE_PATH` - необязательный путь к файлу Telegram message log; по умолчанию используется `telegram-messages.log` рядом с `LOG_FILE_PATH`, либо `.runtime/telegram-messages.log`, если `LOG_FILE_PATH` не задан
+- `TASTY_LOGIN` - логин для `https://api.tastycoffee.ru/api/v1/auth/login`
+- `TASTY_PASSWORD` - пароль для `https://api.tastycoffee.ru/api/v1/auth/login`
+- `TASTY_PRIVACY_AGREEMENT` - булевый флаг, который отправляется в login endpoint, по умолчанию `true`
+- `TASTY_API_BASE_URL` - базовый URL API, по умолчанию `https://api.tastycoffee.ru/api/v1`
+- `TASTY_CATALOG_SORT` - параметр сортировки каталога, по умолчанию `name-asc`
+- `CATALOG_REFRESH_INTERVAL_MS` - интервал принудительного обновления каталога в миллисекундах, по умолчанию `86400000` (раз в сутки)
+- `ALERT_USERNAME` - необязательное имя, используемое в приветствии при отложенной публикации в канал; если пусто, приветствие начинается с `Привет!`
+- `PROMOTIONS_CHANNEL_ID` - id Telegram-канала или `@channel_username`; если задан, включает публикацию акций по расписанию
+- `PROMOTIONS_SCHEDULE_TIME` - еженедельный слот публикации в формате `<weekday> HH:MM`, по умолчанию `monday 09:00`; принимает английские названия дней недели, короткие формы вроде `mon`, цифры `1..7` и распространённые русские названия дней недели
+- `PROMOTIONS_SCHEDULE_TIMEZONE` - IANA timezone для расписания, по умолчанию `Asia/Krasnoyarsk`
+- `PROMOTIONS_SCHEDULE_CHECK_INTERVAL_MS` - интервал проверки scheduler в миллисекундах, по умолчанию `30000`
+- `PROMOTIONS_SCHEDULE_STATE_FILE` - локальный файл, в котором хранится последний успешно опубликованный слот, по умолчанию `.runtime/promotions-schedule.json`
 
-The application automatically reads variables from `.env` if the file exists.
+Если файл `.env` существует, приложение автоматически читает переменные из него.
 
-The bot also performs a forced background catalog refresh once per day by default, even if nobody requests the catalog.
-The bot stores the timestamp of the last successful catalog refresh and can return it in a private chat.
-HTTP requests and responses are logged with sensitive fields redacted, catalog synchronization emits dedicated events, and Telegram message payloads can be kept in a separate file.
+По умолчанию бот также принудительно обновляет каталог в фоне раз в сутки, даже если никто его не запрашивает.
+Бот хранит timestamp последнего успешного обновления каталога и может вернуть его в приватном чате.
+HTTP-запросы и ответы логируются с редактированием чувствительных полей, синхронизация каталога пишет отдельные события, а Telegram message payloads можно хранить в отдельном файле.
 
-## Telegram Usage
+## Использование в Telegram
 
-In private chats the bot shows a reply keyboard with:
+В приватных чатах бот показывает reply keyboard со следующими кнопками:
 
-- `Полный прайс` - full catalog
-- `Акции` - combined selection of `Микролот недели`, `Сорт недели`, and `Сорт месяца`, grouped by promotion type
-- `Сорт недели` - only products with the `Сорт недели` label
-- `Сорт месяца` - only products with the `Сорт месяца` label
-- `Микролот недели` - only products with the `Микролот недели` label
-- `Время обновления` - last successful catalog refresh time
-- `Динамические категории` divider row followed by dynamic buttons for non-empty categories from the current catalog
+- `Полный прайс` - полный каталог
+- `Акции` - объединённая подборка `Микролот недели`, `Сорт недели` и `Сорт месяца`, сгруппированная по типу акции
+- `Сорт недели` - только товары с меткой `Сорт недели`
+- `Сорт месяца` - только товары с меткой `Сорт месяца`
+- `Микролот недели` - только товары с меткой `Микролот недели`
+- `Время обновления` - время последнего успешного обновления каталога
+- `Открыть заказ` - отправляет inline-кнопку, открывающую Mini App, если настроен `MINIAPP_PUBLIC_URL`
+- `Динамические категории` - строка-разделитель, после которой идут динамические кнопки только для непустых категорий из текущего каталога
 
-In group chats and supergroups the bot does not send a reply keyboard and responds only to the command `/акции`.
+В группах и супергруппах бот не отправляет reply keyboard и реагирует только на команду `/акции`.
 
-## Scheduled Channel Posting
+## Mini App Backend
 
-If `PROMOTIONS_CHANNEL_ID` is set, the bot publishes the same content as `/акции` to the configured Telegram channel once per week at the weekday and time defined by `PROMOTIONS_SCHEDULE_TIME`.
-Before each scheduled publish, the bot forces a fresh Tasty Coffee login if needed and reloads categories plus catalog data, so the channel receives the latest promotions snapshot.
+Если `API_ENABLED=true`, приложение запускает встроенный HTTP API для Telegram Mini App. Этот API использует PostgreSQL для хранения пользователей и заявок и работает с тем же in-memory кэшем каталога, что и бот.
+Тот же процесс также раздаёт статический frontend Mini App по адресу `/miniapp`.
 
-Scheduled posts prepend a greeting:
+Доступные endpoints:
 
-- `Приветствую <ALERT_USERNAME>!` followed by `Вот список акционных товаров на новой неделе.` when `ALERT_USERNAME` is set
-- `Привет!` followed by `Вот список акционных товаров на новой неделе.` when `ALERT_USERNAME` is empty
+- `GET /api/health`
+- `POST /api/miniapp/auth` - валидирует Telegram Mini App `initData` и возвращает bearer token
+- `GET /api/catalog`
+- `GET /api/me`
+- `GET /api/me/order`
+- `POST /api/me/order/items`
+- `PATCH /api/me/order/items/:itemId`
+- `DELETE /api/me/order/items/:itemId`
+- `POST /api/me/order/submit`
+- `GET /api/me/orders`
+- `GET /api/me/orders/:orderId`
+- `GET /api/admin/orders`
+- `GET /api/admin/orders/:orderId`
+- `PATCH /api/admin/orders/:orderId/status`
 
-To avoid duplicate posts after restarts, the bot stores the last successful schedule slot in `.runtime/promotions-schedule.json` by default.
+Bearer token возвращается из `POST /api/miniapp/auth` и должен передаваться в остальные endpoints через заголовок `Authorization: Bearer <token>`.
+Доступ администратора выдаётся, если Telegram user id аутентифицированного пользователя присутствует в `ADMIN_TELEGRAM_USER_IDS`.
+Чтобы открывать Mini App из Telegram, укажи в `MINIAPP_PUBLIC_URL` публичный HTTPS URL для `/miniapp` за reverse proxy и используй кнопку `Открыть заказ` в приватном чате.
 
-## Local Run
+## Публикация в канал по расписанию
 
-Create `.env` from `.env.example`, put your real Telegram token and Tasty Coffee credentials there, then run:
+Если задан `PROMOTIONS_CHANNEL_ID`, бот публикует тот же контент, что и по `/акции`, в указанный Telegram-канал раз в неделю в день и время, заданные в `PROMOTIONS_SCHEDULE_TIME`.
+Перед каждой публикацией по расписанию бот при необходимости принудительно делает новый логин в Tasty Coffee и заново загружает категории и каталог, чтобы в канал уходил актуальный снимок акционных товаров.
+
+Плановые публикации добавляют приветствие:
+
+- `Приветствую <ALERT_USERNAME>!`, а затем `Вот список акционных товаров на новой неделе.`, если `ALERT_USERNAME` задан
+- `Привет!`, а затем `Вот список акционных товаров на новой неделе.`, если `ALERT_USERNAME` пустой
+
+Чтобы после рестартов не было дублей, бот по умолчанию хранит последний успешно опубликованный слот в `.runtime/promotions-schedule.json`.
+
+## Локальный запуск
+
+Создай `.env` на основе `.env.example`, подставь реальный Telegram token и учётные данные Tasty Coffee, затем запусти:
 
 Command Prompt:
 
@@ -78,15 +115,15 @@ PowerShell:
 npm start
 ```
 
-## Docker Run
+## Запуск через Docker
 
-Build the image:
+Собери образ:
 
 ```bash
 docker build -t coffee-bot .
 ```
 
-Run the container:
+Запусти контейнер:
 
 ```bash
 sudo mkdir -p /var/log/coffee-bot
@@ -95,10 +132,10 @@ docker run --rm --env-file .env -e LOG_FILE_PATH=/app/logs/app.log -v /var/log/c
 
 ## Docker Compose
 
-Create `.env` from `.env.example`, put your real values into it, then start:
+Создай `.env` на основе `.env.example`, подставь реальные значения и затем запусти:
 
 ```bash
 docker compose up --build -d
 ```
 
-With `docker compose`, the main log is persisted on the host in `/var/log/coffee-bot/app.log`, and the Telegram message log is persisted in `/var/log/coffee-bot/telegram-messages.log` when `LOG_TELEGRAM_MESSAGES=true`.
+При запуске через `docker compose` основной лог сохраняется на хосте в `/var/log/coffee-bot/app.log`, Telegram message log сохраняется в `/var/log/coffee-bot/telegram-messages.log`, если `LOG_TELEGRAM_MESSAGES=true`, PostgreSQL поднимается автоматически, а Mini App backend вместе со статическим frontend доступны по адресу `http://localhost:3000/miniapp`.

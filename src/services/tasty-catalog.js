@@ -178,6 +178,9 @@ export function createCatalogService({ state, config, authService, fetchJson, lo
 
   return {
     ensureCatalogReady,
+    async getCatalogSnapshot(forceRefresh = false) {
+      return ensureCatalogReady(forceRefresh);
+    },
     getAvailableCategories,
     getLastRefreshInfo() {
       if (!state.catalog.lastRefreshedAt) {

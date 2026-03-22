@@ -128,6 +128,17 @@ function parseLogLevel(value, defaultValue = "info") {
   return logLevels.has(normalized) ? normalized : defaultValue;
 }
 
+function parseCommaSeparatedList(value) {
+  if (value === undefined) {
+    return [];
+  }
+
+  return value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+}
+
 function parseScheduleTime(value, fallback = "monday 09:00") {
   const normalizedValue = value?.trim() || fallback;
   const match = /^(\S+)\s+([01]\d|2[0-3]):([0-5]\d)$/.exec(normalizedValue);
@@ -198,6 +209,21 @@ function resolveTelegramMessagesFilePath({
   return ".runtime/telegram-messages.log";
 }
 
+function normalizeUrl(value) {
+  const normalized = trimToNull(value);
+
+  if (!normalized) {
+    return null;
+  }
+
+  try {
+    return new URL(normalized).toString();
+  } catch {
+    console.error(`Invalid URL value: "${normalized}"`);
+    process.exit(1);
+  }
+}
+
 export function loadConfig() {
   loadEnvFile(".env");
 
@@ -215,6 +241,13 @@ export function loadConfig() {
     process.env.LOG_TELEGRAM_MESSAGES,
     !isRunningInDocker
   );
+  const apiEnabled = parseBoolean(process.env.API_ENABLED, false);
+  const databaseUrl = trimToNull(process.env.DATABASE_URL);
+
+  if (apiEnabled && !databaseUrl) {
+    console.error("DATABASE_URL is required when API_ENABLED=true");
+    process.exit(1);
+  }
 
   return {
     logging: {
@@ -236,6 +269,22 @@ export function loadConfig() {
       token: telegramToken,
       pollTimeout: Number.parseInt(process.env.TELEGRAM_POLL_TIMEOUT ?? "30", 10),
       apiBaseUrl: `https://api.telegram.org/bot${telegramToken}`
+    },
+    api: {
+      enabled: apiEnabled,
+      host: process.env.HTTP_HOST?.trim() || "0.0.0.0",
+      port: parsePositiveInteger(process.env.HTTP_PORT, 3000),
+      sessionSecret: trimToNull(process.env.API_SESSION_SECRET) ?? telegramToken,
+      sessionTtlSeconds: parsePositiveInteger(process.env.API_SESSION_TTL_SECONDS, 86_400),
+      authMaxAgeSeconds: parsePositiveInteger(process.env.MINIAPP_AUTH_MAX_AGE_SECONDS, 3_600),
+      adminTelegramUserIds: new Set(parseCommaSeparatedList(process.env.ADMIN_TELEGRAM_USER_IDS))
+    },
+    miniApp: {
+      publicUrl: normalizeUrl(process.env.MINIAPP_PUBLIC_URL),
+      buttonText: trimToNull(process.env.MINIAPP_BUTTON_TEXT) ?? "Открыть Mini App"
+    },
+    database: {
+      url: databaseUrl
     },
     tasty: {
       apiBaseUrl: process.env.TASTY_API_BASE_URL ?? "https://api.tastycoffee.ru/api/v1",

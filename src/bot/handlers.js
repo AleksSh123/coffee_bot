@@ -8,6 +8,9 @@ import {
   catalogNotUpdatedYetMessage,
   catalogUpdatedAtButtonLabel,
   catalogUnavailableMessage,
+  miniAppButtonLabel,
+  miniAppOpenPromptMessage,
+  miniAppUnavailableMessage,
   promptMessage,
   promotionsButtonLabel,
   promotionsGroupCommand
@@ -15,11 +18,16 @@ import {
 
 export function createBotHandlers({
   catalogService,
+  miniApp,
   telegramClient,
   formatError,
   logger,
   messageLogger
 }) {
+  function hasMiniAppEntry() {
+    return Boolean(miniApp?.publicUrl);
+  }
+
   function getCategoryButtonLabels() {
     return catalogService.getAvailableCategories().map((category) => category.name);
   }
@@ -27,8 +35,35 @@ export function createBotHandlers({
   function buildPrivateKeyboardOptions() {
     return {
       includeKeyboard: true,
-      categoryButtonLabels: getCategoryButtonLabels()
+      categoryButtonLabels: getCategoryButtonLabels(),
+      includeMiniAppButton: hasMiniAppEntry()
     };
+  }
+
+  async function sendMiniAppPrompt(chat) {
+    if (!hasMiniAppEntry()) {
+      await telegramClient.sendMessage(chat.id, miniAppUnavailableMessage, {
+        chatType: chat.type,
+        ...buildPrivateKeyboardOptions()
+      });
+      return;
+    }
+
+    await telegramClient.sendMessage(chat.id, miniAppOpenPromptMessage, {
+      chatType: chat.type,
+      replyMarkup: {
+        inline_keyboard: [
+          [
+            {
+              text: miniApp.buttonText,
+              web_app: {
+                url: miniApp.publicUrl
+              }
+            }
+          ]
+        ]
+      }
+    });
   }
 
   function findCategoryByButtonLabel(categoriesById, buttonLabel) {
@@ -200,6 +235,7 @@ export function createBotHandlers({
     const isPrivate = isPrivateChat(chat);
     const isCatalogUpdatedAtRequest = isPrivate && text === catalogUpdatedAtButtonLabel;
     const isCategorySectionTap = isPrivate && text === catalogCategoriesSectionLabel;
+    const isMiniAppRequest = isPrivate && text === miniAppButtonLabel;
     const requestedButton = isPrivate
       ? getCatalogConfigByButton(text)?.buttonLabel
       : isGroupPromotionsCommand(text)
@@ -211,6 +247,11 @@ export function createBotHandlers({
         chatType: chat.type,
         ...buildPrivateKeyboardOptions()
       });
+      return;
+    }
+
+    if (isMiniAppRequest) {
+      await sendMiniAppPrompt(chat);
       return;
     }
 
