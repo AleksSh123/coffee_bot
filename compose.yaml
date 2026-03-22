@@ -8,4 +8,4 @@ services:
       LOG_FILE_PATH: /app/logs/app.log
     restart: unless-stopped
     volumes:
-      - ./logs:/app/logs
+      - /var/log/coffee-bot:/app/logs

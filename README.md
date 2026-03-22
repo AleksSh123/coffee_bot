@@ -89,7 +89,8 @@ docker build -t coffee-bot .
 Run the container:
 
 ```bash
-docker run --rm --env-file .env -e LOG_FILE_PATH=/app/logs/app.log -v "$(pwd)/logs:/app/logs" coffee-bot
+sudo mkdir -p /var/log/coffee-bot
+docker run --rm --env-file .env -e LOG_FILE_PATH=/app/logs/app.log -v /var/log/coffee-bot:/app/logs coffee-bot
 ```
 
 ## Docker Compose
@@ -100,4 +101,4 @@ Create `.env` from `.env.example`, put your real values into it, then start:
 docker compose up --build -d
 ```
 
-With `docker compose`, the main log is persisted on the host in `./logs/app.log`, and the Telegram message log is persisted in `./logs/telegram-messages.log` when `LOG_TELEGRAM_MESSAGES=true`.
+With `docker compose`, the main log is persisted on the host in `/var/log/coffee-bot/app.log`, and the Telegram message log is persisted in `/var/log/coffee-bot/telegram-messages.log` when `LOG_TELEGRAM_MESSAGES=true`.
