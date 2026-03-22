@@ -193,7 +193,7 @@ function buildCategoryBlocks(items, categoriesById = new Map()) {
     );
 
     for (const item of sortedItems) {
-      itemBlocks.push(formatCatalogItemBlock(item));
+      itemBlocks.push(indentBlock(formatCatalogItemBlock(item), "\u00A0\u00A0"));
     }
   }
 
@@ -243,7 +243,7 @@ export function buildPromotionsMessagesWithTitle(
     const promotionBlocks = buildCategoryBlocks(labelItems, categoriesById);
 
     for (const block of promotionBlocks) {
-      itemBlocks.push(indentBlock(block, isCategoryHeaderBlock(block) ? "\u00A0" : "\u00A0\u00A0"));
+      itemBlocks.push(isCategoryHeaderBlock(block) ? indentBlock(block, "\u00A0") : block);
     }
   }
 
