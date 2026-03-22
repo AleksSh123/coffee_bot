@@ -3,6 +3,16 @@ import { dirname } from "node:path";
 
 import { promotionsButtonLabel } from "../config/constants.js";
 
+const isoWeekdayByShortLabel = {
+  Mon: 1,
+  Tue: 2,
+  Wed: 3,
+  Thu: 4,
+  Fri: 5,
+  Sat: 6,
+  Sun: 7
+};
+
 function loadSchedulerState(stateFilePath) {
   if (!existsSync(stateFilePath)) {
     return {
@@ -35,6 +45,7 @@ function getCurrentTimeParts(timeZone, date = new Date()) {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
+    weekday: "short",
     hour: "2-digit",
     minute: "2-digit",
     hour12: false
@@ -49,6 +60,7 @@ function getCurrentTimeParts(timeZone, date = new Date()) {
 
   return {
     dateKey: `${parts.year}-${parts.month}-${parts.day}`,
+    weekday: isoWeekdayByShortLabel[parts.weekday],
     hour: Number.parseInt(parts.hour, 10),
     minute: Number.parseInt(parts.minute, 10)
   };
@@ -92,13 +104,14 @@ export function createPromotionsScheduler({
 
   function getSlotKey(date = new Date()) {
     const currentTime = getCurrentTimeParts(scheduleConfig.timeZone, date);
-    return `${currentTime.dateKey}@${scheduleConfig.timeLabel}`;
+    return `${currentTime.dateKey}@${scheduleConfig.scheduleLabel}`;
   }
 
   function isScheduledMinute(date = new Date()) {
     const currentTime = getCurrentTimeParts(scheduleConfig.timeZone, date);
 
     return (
+      currentTime.weekday === scheduleConfig.weekday &&
       currentTime.hour === scheduleConfig.hour &&
       currentTime.minute === scheduleConfig.minute
     );
@@ -173,7 +186,7 @@ export function createPromotionsScheduler({
 
     logger.info("promotions.scheduler.started", {
       channel_id: scheduleConfig.channelId,
-      time_label: scheduleConfig.timeLabel,
+      schedule_label: scheduleConfig.scheduleLabel,
       time_zone: scheduleConfig.timeZone,
       check_interval_ms: scheduleConfig.checkIntervalMs
     });

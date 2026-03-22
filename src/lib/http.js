@@ -90,6 +90,15 @@ function buildResponseLogRecord({
   };
 }
 
+function logHttpLifecycle(logger, level, event, payload) {
+  if (!logger) {
+    return;
+  }
+
+  const methodName = payload?.context === "telegram.getUpdates" ? "debug" : level;
+  logger[methodName]?.(event, payload);
+}
+
 export async function fetchJson(
   url,
   { method = "GET", headers = {}, body, logger, logContext } = {}
@@ -97,8 +106,10 @@ export async function fetchJson(
   const requestId = ++requestSequence;
   const startedAt = Date.now();
 
-  logger?.info(
-    "http.request",
+  logHttpLifecycle(
+    logger,
+    "info",
+    "http.request.started",
     buildRequestLogRecord({
       requestId,
       context: logContext,
@@ -138,18 +149,18 @@ export async function fetchJson(
     });
 
     if (!response.ok) {
-      logger?.error("http.response", responseLogRecord);
+      logger?.error("http.request.failed", responseLogRecord);
       const details = typeof payload === "string" ? payload : JSON.stringify(payload);
       const error = new Error(`Request failed: ${response.status} ${details}`);
       error.status = response.status;
       throw error;
     }
 
-    logger?.info("http.response", responseLogRecord);
+    logHttpLifecycle(logger, "info", "http.request.completed", responseLogRecord);
     return payload;
   } catch (error) {
     if (error?.status === undefined) {
-      logger?.error("http.error", {
+      logger?.error("http.request.failed", {
         request_id: requestId,
         context: logContext,
         method,

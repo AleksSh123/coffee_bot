@@ -19,6 +19,20 @@ function buildMainKeyboard() {
   };
 }
 
+function summarizeOutgoingText(text, fallback = "[empty text]") {
+  if (typeof text !== "string") {
+    return fallback;
+  }
+
+  const normalized = text.replace(/\s+/g, " ").trim();
+
+  if (!normalized) {
+    return fallback;
+  }
+
+  return normalized.length > 80 ? `${normalized.slice(0, 80)}...` : normalized;
+}
+
 export function createTelegramClient({ apiBaseUrl, fetchJson, logger, messageLogger }) {
   let botUsername = null;
 
@@ -54,6 +68,13 @@ export function createTelegramClient({ apiBaseUrl, fetchJson, logger, messageLog
     }
 
     const responseMessage = await callApi("sendMessage", payload);
+    logger.info("telegram.message.sent");
+    logger.debug("telegram.message.sent", {
+      chat_id: responseMessage?.chat?.id ?? payload.chat_id,
+      chat_type: responseMessage?.chat?.type ?? options.chatType ?? null,
+      message_id: responseMessage?.message_id ?? null,
+      text_preview: summarizeOutgoingText(payload.text)
+    });
     messageLogger.logOutgoing({
       chatType: options.chatType,
       request: payload,

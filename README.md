@@ -12,8 +12,11 @@ Minimal Telegram bot on Node.js. It authenticates with Telegram, logs in to the 
 
 - `TELEGRAM_BOT_TOKEN` - Telegram bot token
 - `TELEGRAM_POLL_TIMEOUT` - long polling timeout in seconds, default `30`
-- `LOG_FILE_PATH` - optional path to a log file with pretty-printed JSON records; when set, logs are written both to console and to this file
-- `LOG_TELEGRAM_MESSAGES` - adds incoming and outgoing Telegram message payloads to the application log; defaults to `true` outside Docker and `false` in Docker
+- `LOG_FILE_PATH` - optional path to the main application log file; each application record is written in one line as `timestamp level module event status details`, where `INFO` uses compact details and `DEBUG` keeps the full payload, and when set logs are written both to console and to this file
+- `LOG_LEVEL` - minimum level for the main application log, supported values: `debug`, `info`, `warn`, `error`, default `info`
+- `LOG_TELEGRAM_MESSAGES` - writes incoming and outgoing Telegram message payloads to a separate message log file; defaults to `true` outside Docker and `false` in Docker
+- `LOG_TELEGRAM_MESSAGES_LEVEL` - minimum level for the Telegram message log; `debug` keeps the current detailed payload format, `info` writes only direction, message date, text, sender, and group title for group chats; default `debug`
+- `LOG_TELEGRAM_MESSAGES_FILE_PATH` - optional path to the Telegram message log file; defaults to `telegram-messages.log` next to `LOG_FILE_PATH`, or `.runtime/telegram-messages.log` when `LOG_FILE_PATH` is not set
 - `TASTY_LOGIN` - login for `https://api.tastycoffee.ru/api/v1/auth/login`
 - `TASTY_PASSWORD` - password for `https://api.tastycoffee.ru/api/v1/auth/login`
 - `TASTY_PRIVACY_AGREEMENT` - boolean flag sent to the login endpoint, default `true`
@@ -22,7 +25,7 @@ Minimal Telegram bot on Node.js. It authenticates with Telegram, logs in to the 
 - `CATALOG_REFRESH_INTERVAL_MS` - forced catalog refresh interval in milliseconds, default `86400000` (once per day)
 - `ALERT_USERNAME` - optional name used in the scheduled channel greeting; when empty the greeting starts with `Привет!`
 - `PROMOTIONS_CHANNEL_ID` - Telegram channel id or `@channel_username`; enables scheduled channel posting when set
-- `PROMOTIONS_SCHEDULE_TIME` - daily publish time in `HH:MM`, default `09:00`
+- `PROMOTIONS_SCHEDULE_TIME` - weekly publish slot in `<weekday> HH:MM`, default `monday 09:00`; accepts English weekday names like `monday`, short forms like `mon`, digits `1..7`, and common Russian weekday names
 - `PROMOTIONS_SCHEDULE_TIMEZONE` - IANA timezone for the schedule, default `Asia/Krasnoyarsk`
 - `PROMOTIONS_SCHEDULE_CHECK_INTERVAL_MS` - scheduler polling interval in milliseconds, default `30000`
 - `PROMOTIONS_SCHEDULE_STATE_FILE` - local file used to remember the last published slot, default `.runtime/promotions-schedule.json`
@@ -31,7 +34,7 @@ The application automatically reads variables from `.env` if the file exists.
 
 The bot also performs a forced background catalog refresh once per day by default, even if nobody requests the catalog.
 The bot stores the timestamp of the last successful catalog refresh and can return it in a private chat.
-HTTP requests and responses are logged with sensitive fields redacted, and catalog synchronization emits dedicated events.
+HTTP requests and responses are logged with sensitive fields redacted, catalog synchronization emits dedicated events, and Telegram message payloads can be kept in a separate file.
 
 ## Telegram Usage
 
@@ -49,7 +52,7 @@ In group chats and supergroups the bot does not send a reply keyboard and respon
 
 ## Scheduled Channel Posting
 
-If `PROMOTIONS_CHANNEL_ID` is set, the bot publishes the same content as `/акции` to the configured Telegram channel once per day at `PROMOTIONS_SCHEDULE_TIME`.
+If `PROMOTIONS_CHANNEL_ID` is set, the bot publishes the same content as `/акции` to the configured Telegram channel once per week at the weekday and time defined by `PROMOTIONS_SCHEDULE_TIME`.
 Before each scheduled publish, the bot forces a fresh Tasty Coffee login if needed and reloads categories plus catalog data, so the channel receives the latest promotions snapshot.
 
 Scheduled posts prepend a greeting:
@@ -97,4 +100,4 @@ Create `.env` from `.env.example`, put your real values into it, then start:
 docker compose up --build -d
 ```
 
-With `docker compose`, logs are also persisted on the host in `./logs/app.log`.
+With `docker compose`, the main log is persisted on the host in `./logs/app.log`, and the Telegram message log is persisted in `./logs/telegram-messages.log` when `LOG_TELEGRAM_MESSAGES=true`.

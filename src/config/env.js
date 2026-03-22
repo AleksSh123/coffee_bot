@@ -1,4 +1,56 @@
 import { existsSync, readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+
+const logLevels = new Set(["debug", "info", "warn", "error"]);
+const canonicalWeekdayLabels = {
+  1: "monday",
+  2: "tuesday",
+  3: "wednesday",
+  4: "thursday",
+  5: "friday",
+  6: "saturday",
+  7: "sunday"
+};
+const weekdayNumbersByAlias = new Map([
+  ["1", 1],
+  ["monday", 1],
+  ["mon", 1],
+  ["понедельник", 1],
+  ["пн", 1],
+  ["2", 2],
+  ["tuesday", 2],
+  ["tue", 2],
+  ["tues", 2],
+  ["вторник", 2],
+  ["вт", 2],
+  ["3", 3],
+  ["wednesday", 3],
+  ["wed", 3],
+  ["среда", 3],
+  ["ср", 3],
+  ["4", 4],
+  ["thursday", 4],
+  ["thu", 4],
+  ["thur", 4],
+  ["thurs", 4],
+  ["четверг", 4],
+  ["чт", 4],
+  ["5", 5],
+  ["friday", 5],
+  ["fri", 5],
+  ["пятница", 5],
+  ["пт", 5],
+  ["6", 6],
+  ["saturday", 6],
+  ["sat", 6],
+  ["суббота", 6],
+  ["сб", 6],
+  ["7", 7],
+  ["sunday", 7],
+  ["sun", 7],
+  ["воскресенье", 7],
+  ["вс", 7]
+]);
 
 function loadEnvFile(filePath) {
   if (!existsSync(filePath)) {
@@ -66,20 +118,44 @@ function parsePositiveInteger(value, defaultValue) {
   return defaultValue;
 }
 
-function parseScheduleTime(value, fallback = "09:00") {
-  const normalizedValue = value ?? fallback;
-  const match = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(normalizedValue);
+function parseLogLevel(value, defaultValue = "info") {
+  if (value === undefined) {
+    return defaultValue;
+  }
+
+  const normalized = value.trim().toLowerCase();
+
+  return logLevels.has(normalized) ? normalized : defaultValue;
+}
+
+function parseScheduleTime(value, fallback = "monday 09:00") {
+  const normalizedValue = value?.trim() || fallback;
+  const match = /^(\S+)\s+([01]\d|2[0-3]):([0-5]\d)$/.exec(normalizedValue);
 
   if (!match) {
     throw new Error(
-      `PROMOTIONS_SCHEDULE_TIME must be in HH:MM format, received "${normalizedValue}"`
+      `PROMOTIONS_SCHEDULE_TIME must be in "<weekday> HH:MM" format, received "${normalizedValue}"`
     );
   }
 
+  const weekday = weekdayNumbersByAlias.get(match[1].toLowerCase());
+
+  if (!weekday) {
+    throw new Error(
+      `PROMOTIONS_SCHEDULE_TIME weekday must be one of monday..sunday, mon..sun, 1..7, or common Russian weekday names; received "${match[1]}"`
+    );
+  }
+
+  const timeLabel = `${match[2]}:${match[3]}`;
+  const weekdayLabel = canonicalWeekdayLabels[weekday];
+
   return {
-    timeLabel: normalizedValue,
-    hour: Number.parseInt(match[1], 10),
-    minute: Number.parseInt(match[2], 10)
+    weekday,
+    weekdayLabel,
+    timeLabel,
+    scheduleLabel: `${weekdayLabel} ${timeLabel}`,
+    hour: Number.parseInt(match[2], 10),
+    minute: Number.parseInt(match[3], 10)
   };
 }
 
@@ -94,6 +170,34 @@ function requireEnv(name) {
   return value;
 }
 
+function trimToNull(value) {
+  const normalized = value?.trim();
+
+  return normalized ? normalized : null;
+}
+
+function resolveTelegramMessagesFilePath({
+  enabled,
+  explicitFilePath,
+  mainLogFilePath
+}) {
+  if (!enabled) {
+    return null;
+  }
+
+  const activeExplicitFilePath = trimToNull(explicitFilePath);
+
+  if (activeExplicitFilePath) {
+    return activeExplicitFilePath;
+  }
+
+  if (mainLogFilePath) {
+    return join(dirname(mainLogFilePath), "telegram-messages.log");
+  }
+
+  return ".runtime/telegram-messages.log";
+}
+
 export function loadConfig() {
   loadEnvFile(".env");
 
@@ -106,14 +210,23 @@ export function loadConfig() {
     process.env.PROMOTIONS_SCHEDULE_TIMEZONE ?? "Asia/Krasnoyarsk";
   const promotionsChannelId = process.env.PROMOTIONS_CHANNEL_ID?.trim() ?? "";
   const alertUsername = process.env.ALERT_USERNAME?.trim() ?? "";
+  const logFilePath = trimToNull(process.env.LOG_FILE_PATH);
+  const echoTelegramMessages = parseBoolean(
+    process.env.LOG_TELEGRAM_MESSAGES,
+    !isRunningInDocker
+  );
 
   return {
     logging: {
-      filePath: process.env.LOG_FILE_PATH?.trim() || null,
-      echoTelegramMessages: parseBoolean(
-        process.env.LOG_TELEGRAM_MESSAGES,
-        !isRunningInDocker
-      )
+      filePath: logFilePath,
+      level: parseLogLevel(process.env.LOG_LEVEL, "info"),
+      echoTelegramMessages,
+      telegramMessagesLevel: parseLogLevel(process.env.LOG_TELEGRAM_MESSAGES_LEVEL, "debug"),
+      telegramMessagesFilePath: resolveTelegramMessagesFilePath({
+        enabled: echoTelegramMessages,
+        explicitFilePath: process.env.LOG_TELEGRAM_MESSAGES_FILE_PATH,
+        mainLogFilePath: logFilePath
+      })
     },
     catalogRefresh: {
       intervalMs: parsePositiveInteger(process.env.CATALOG_REFRESH_INTERVAL_MS, 86_400_000),
@@ -135,7 +248,10 @@ export function loadConfig() {
       enabled: promotionsChannelId.length > 0,
       alertUsername,
       channelId: promotionsChannelId,
+      weekday: promotionsScheduleTime.weekday,
+      weekdayLabel: promotionsScheduleTime.weekdayLabel,
       timeLabel: promotionsScheduleTime.timeLabel,
+      scheduleLabel: promotionsScheduleTime.scheduleLabel,
       hour: promotionsScheduleTime.hour,
       minute: promotionsScheduleTime.minute,
       timeZone: promotionsScheduleTimeZone,

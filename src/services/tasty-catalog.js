@@ -13,6 +13,24 @@ function getResponseItems(response) {
   return null;
 }
 
+function extractPricesValidText(response) {
+  const candidates = [
+    response?.meta?.prices_valid,
+    response?.meta?.pricesValid,
+    response?.meta?.prices_valid_until,
+    response?.meta?.pricesValidUntil,
+    response?.meta?.["цены валидны до"]
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim()) {
+      return candidate.trim();
+    }
+  }
+
+  return null;
+}
+
 export function createCatalogService({ state, config, authService, fetchJson, logger }) {
   function formatRefreshTimestamp(timestamp) {
     return new Intl.DateTimeFormat("ru-RU", {
@@ -41,7 +59,10 @@ export function createCatalogService({ state, config, authService, fetchJson, lo
       throw new Error("Tasty Coffee categories response did not include a category array");
     }
 
-    return new Map(categories.map((category) => [category.id, category]));
+    return {
+      categoriesById: new Map(categories.map((category) => [category.id, category])),
+      pricesValidText: extractPricesValidText(response)
+    };
   }
 
   async function fetchCatalog() {
@@ -66,13 +87,17 @@ export function createCatalogService({ state, config, authService, fetchJson, lo
 
   async function fetchCatalogData() {
     const startedAt = Date.now();
-    const [categoriesById, items] = await Promise.all([fetchCategories(), fetchCatalog()]);
+    const [{ categoriesById, pricesValidText }, items] = await Promise.all([
+      fetchCategories(),
+      fetchCatalog()
+    ]);
     const lastRefreshedAt = Date.now();
 
     state.catalog = {
       items,
       categoriesById,
       messages: buildCatalogMessagesWithTitle(items, defaultCatalogTitle, categoriesById),
+      pricesValidText,
       lastRefreshedAt
     };
 

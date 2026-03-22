@@ -4,7 +4,7 @@ import { createTelegramClient } from "./clients/telegram.js";
 import { loadConfig } from "./config/env.js";
 import { formatError } from "./lib/errors.js";
 import { fetchJson } from "./lib/http.js";
-import { createAppLogger } from "./lib/logger.js";
+import { createAppLogger, createFileLogger } from "./lib/logger.js";
 import { createMessageLogger } from "./lib/message-logger.js";
 import { createCatalogRefreshScheduler } from "./scheduler/catalog-refresh.js";
 import { createPromotionsScheduler } from "./scheduler/promotions.js";
@@ -15,7 +15,12 @@ import { createStore } from "./state/store.js";
 const config = loadConfig();
 const state = createStore();
 const logger = createAppLogger({
-  filePath: config.logging.filePath
+  filePath: config.logging.filePath,
+  level: config.logging.level
+});
+const telegramMessagesLogger = createFileLogger({
+  filePath: config.logging.telegramMessagesFilePath,
+  level: config.logging.telegramMessagesLevel
 });
 const loggedFetchJson = (url, options = {}) =>
   fetchJson(url, {
@@ -24,7 +29,8 @@ const loggedFetchJson = (url, options = {}) =>
   });
 const messageLogger = createMessageLogger({
   enabled: config.logging.echoTelegramMessages,
-  logger
+  level: config.logging.telegramMessagesLevel,
+  logger: telegramMessagesLogger
 });
 
 const telegramClient = createTelegramClient({
@@ -90,9 +96,13 @@ function shutdownApp(signal) {
 process.on("SIGINT", () => shutdownApp("SIGINT"));
 process.on("SIGTERM", () => shutdownApp("SIGTERM"));
 
-logger.info("app.starting", {
+logger.info("app.lifecycle.starting", {
   node_env: process.env.NODE_ENV ?? null,
-  log_file_path: config.logging.filePath
+  log_file_path: config.logging.filePath,
+  log_level: config.logging.level,
+  telegram_messages_enabled: config.logging.echoTelegramMessages,
+  telegram_messages_log_level: config.logging.telegramMessagesLevel,
+  telegram_messages_log_file_path: config.logging.telegramMessagesFilePath
 });
 await telegramClient.verifyBot();
 

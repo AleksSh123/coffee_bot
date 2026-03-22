@@ -19,6 +19,20 @@ export function createBotHandlers({
   logger,
   messageLogger
 }) {
+  function summarizeIncomingText(text, fallback = "[non-text message]") {
+    if (typeof text !== "string") {
+      return fallback;
+    }
+
+    const normalized = text.replace(/\s+/g, " ").trim();
+
+    if (!normalized) {
+      return "[empty text]";
+    }
+
+    return normalized.length > 80 ? `${normalized.slice(0, 80)}...` : normalized;
+  }
+
   function prependMessagePrefix(messages, messagePrefix) {
     if (!messagePrefix || messages.length === 0) {
       return messages;
@@ -89,7 +103,8 @@ export function createBotHandlers({
         filteredItems,
         config.headerTitle,
         catalog.categoriesById,
-        config.labelNames
+        config.labelNames,
+        catalog.pricesValidText
       );
     } else if (config.labelName || config.labelNames) {
       messages = buildCatalogMessagesWithTitle(
@@ -113,15 +128,27 @@ export function createBotHandlers({
   }
 
   async function handleUpdate(update) {
-    if (!update?.message?.chat?.id || !update.message.text) {
+    if (!update?.message?.chat?.id) {
       return;
     }
 
     const { chat, text } = update.message;
+    logger.info("telegram.message.received");
+    logger.debug("telegram.message.received", {
+      chat_id: chat.id,
+      chat_type: chat.type,
+      sender_id: update.message.from?.id ?? null,
+      text_preview: summarizeIncomingText(text ?? update.message.caption)
+    });
     messageLogger.logIncoming({
       updateId: update.update_id,
       message: update.message
     });
+
+    if (!text) {
+      return;
+    }
+
     const isPrivate = isPrivateChat(chat);
     const isCatalogUpdatedAtRequest = isPrivate && text === catalogUpdatedAtButtonLabel;
     const requestedButton = isPrivate

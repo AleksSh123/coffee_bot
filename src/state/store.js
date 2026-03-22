@@ -11,6 +11,7 @@ export function createStore() {
       items: [],
       messages: [],
       categoriesById: new Map(),
+      pricesValidText: null,
       lastRefreshedAt: 0
     },
     refreshPromise: null

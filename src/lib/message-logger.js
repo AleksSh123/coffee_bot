@@ -4,6 +4,86 @@ function compactObject(value) {
   );
 }
 
+function normalizeLogLevel(value) {
+  return typeof value === "string" ? value.trim().toLowerCase() : "debug";
+}
+
+function isGroupChat(chat) {
+  return ["group", "supergroup"].includes(chat?.type);
+}
+
+function formatUnixTimestamp(value) {
+  const numericValue = Number(value);
+
+  if (!Number.isFinite(numericValue) || numericValue <= 0) {
+    return undefined;
+  }
+
+  return new Date(numericValue * 1000).toISOString();
+}
+
+function extractMessageText(message) {
+  if (!message) {
+    return undefined;
+  }
+
+  if (typeof message.text === "string" && message.text.trim()) {
+    return message.text;
+  }
+
+  if (typeof message.caption === "string" && message.caption.trim()) {
+    return message.caption;
+  }
+
+  return undefined;
+}
+
+function formatPersonLabel(user) {
+  if (!user) {
+    return undefined;
+  }
+
+  const fullName = [user.first_name, user.last_name].filter(Boolean).join(" ").trim();
+
+  if (fullName && user.username) {
+    return `${fullName} (@${user.username})`;
+  }
+
+  if (fullName) {
+    return fullName;
+  }
+
+  if (user.username) {
+    return `@${user.username}`;
+  }
+
+  if (user.id !== undefined && user.id !== null) {
+    return String(user.id);
+  }
+
+  return undefined;
+}
+
+function formatGroupLabel(chat) {
+  if (!isGroupChat(chat)) {
+    return undefined;
+  }
+
+  if (chat.title) {
+    return chat.title;
+  }
+
+  if (chat.username) {
+    return `@${chat.username}`;
+  }
+
+  if (chat.id !== undefined && chat.id !== null) {
+    return String(chat.id);
+  }
+
+  return undefined;
+}
+
 function pickUser(user) {
   if (!user) {
     return undefined;
@@ -77,6 +157,18 @@ function buildIncomingRecord(payload) {
   });
 }
 
+function buildIncomingSummary(payload) {
+  const message = payload.message;
+
+  return compactObject({
+    direction: "in",
+    message_date: formatUnixTimestamp(message?.date),
+    text: extractMessageText(message),
+    from: formatPersonLabel(message?.from),
+    group: formatGroupLabel(message?.chat)
+  });
+}
+
 function buildOutgoingRecord(payload) {
   const request = payload.request ?? {};
   const responseMessage = payload.responseMessage;
@@ -94,20 +186,47 @@ function buildOutgoingRecord(payload) {
   });
 }
 
-export function createMessageLogger({ enabled, logger }) {
-  if (!enabled) {
+function buildOutgoingSummary(payload) {
+  const request = payload.request ?? {};
+  const responseMessage = payload.responseMessage;
+  const chat = responseMessage?.chat ?? { id: request.chat_id, type: payload.chatType };
+
+  return compactObject({
+    direction: "out",
+    message_date: formatUnixTimestamp(responseMessage?.date),
+    text: extractMessageText(responseMessage) ?? request.text,
+    from: formatPersonLabel(responseMessage?.from),
+    group: formatGroupLabel(chat)
+  });
+}
+
+export function createMessageLogger({ enabled, level = "debug", logger }) {
+  if (!enabled || !logger?.info || !logger?.debug) {
     return {
       logIncoming() {},
       logOutgoing() {}
     };
   }
 
+  const normalizedLevel = normalizeLogLevel(level);
+  const useDetailedRecords = normalizedLevel === "debug";
+
   return {
     logIncoming(payload) {
-      logger.info("telegram.message.in", buildIncomingRecord(payload));
+      if (useDetailedRecords) {
+        logger.debug("telegram.message.in", buildIncomingRecord(payload));
+        return;
+      }
+
+      logger.info("telegram.message.in", buildIncomingSummary(payload));
     },
     logOutgoing(payload) {
-      logger.info("telegram.message.out", buildOutgoingRecord(payload));
+      if (useDetailedRecords) {
+        logger.debug("telegram.message.out", buildOutgoingRecord(payload));
+        return;
+      }
+
+      logger.info("telegram.message.out", buildOutgoingSummary(payload));
     }
   };
 }

@@ -107,6 +107,10 @@ function isHeaderBlock(block) {
   );
 }
 
+function isCategoryHeaderBlock(block) {
+  return block.trimStart().startsWith("<b>Категория:");
+}
+
 function splitLongBlock(block, maxLength) {
   if (block.length <= maxLength) {
     return [block];
@@ -223,7 +227,8 @@ export function buildPromotionsMessagesWithTitle(
   items,
   title,
   categoriesById = new Map(),
-  labelNames = []
+  labelNames = [],
+  pricesValidText = null
 ) {
   const itemBlocks = [];
 
@@ -235,7 +240,15 @@ export function buildPromotionsMessagesWithTitle(
     }
 
     itemBlocks.push(`<b><i><u>⭐ Акция: ${escapeHtml(labelName)}</u></i></b>`);
-    itemBlocks.push(...buildCategoryBlocks(labelItems, categoriesById).map((block) => indentBlock(block)));
+    const promotionBlocks = buildCategoryBlocks(labelItems, categoriesById);
+
+    for (const block of promotionBlocks) {
+      itemBlocks.push(indentBlock(block, isCategoryHeaderBlock(block) ? "\u00A0" : "\u00A0\u00A0"));
+    }
+  }
+
+  if (pricesValidText) {
+    itemBlocks.push(`<i>${escapeHtml(pricesValidText)}</i>`);
   }
 
   return buildMessagesWithTitle(itemBlocks, title, items.length);
