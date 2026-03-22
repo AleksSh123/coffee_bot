@@ -1,4 +1,5 @@
 import {
+  catalogCategoriesSectionLabel,
   catalogUpdatedAtButtonLabel,
   microlotOfWeekButtonLabel,
   priceButtonLabel,
@@ -7,12 +8,32 @@ import {
   sortOfWeekButtonLabel
 } from "../config/constants.js";
 
-function buildMainKeyboard() {
+function buildKeyboardRows(buttonLabels, itemsPerRow = 2) {
+  const rows = [];
+
+  for (let index = 0; index < buttonLabels.length; index += itemsPerRow) {
+    rows.push(
+      buttonLabels.slice(index, index + itemsPerRow).map((label) => ({
+        text: label
+      }))
+    );
+  }
+
+  return rows;
+}
+
+function buildKeyboard(categoryButtonLabels = []) {
+  const categoryRows =
+    categoryButtonLabels.length > 0
+      ? [[{ text: catalogCategoriesSectionLabel }], ...buildKeyboardRows(categoryButtonLabels)]
+      : [];
+
   return {
     keyboard: [
       [{ text: priceButtonLabel }, { text: promotionsButtonLabel }],
       [{ text: sortOfWeekButtonLabel }, { text: sortOfMonthButtonLabel }],
-      [{ text: microlotOfWeekButtonLabel }, { text: catalogUpdatedAtButtonLabel }]
+      [{ text: microlotOfWeekButtonLabel }, { text: catalogUpdatedAtButtonLabel }],
+      ...categoryRows
     ],
     resize_keyboard: true,
     one_time_keyboard: false
@@ -60,7 +81,7 @@ export function createTelegramClient({ apiBaseUrl, fetchJson, logger, messageLog
     };
 
     if (options.includeKeyboard) {
-      payload.reply_markup = buildMainKeyboard();
+      payload.reply_markup = buildKeyboard(options.categoryButtonLabels ?? []);
     }
 
     if (options.parseMode) {

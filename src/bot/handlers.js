@@ -4,6 +4,7 @@ import {
 } from "../catalog/formatters.js";
 import { filterCatalogItems, getCatalogConfigByButton } from "../catalog/filters.js";
 import {
+  catalogCategoriesSectionLabel,
   catalogNotUpdatedYetMessage,
   catalogUpdatedAtButtonLabel,
   catalogUnavailableMessage,
@@ -19,6 +20,30 @@ export function createBotHandlers({
   logger,
   messageLogger
 }) {
+  function getCategoryButtonLabels() {
+    return catalogService.getAvailableCategories().map((category) => category.name);
+  }
+
+  function buildPrivateKeyboardOptions() {
+    return {
+      includeKeyboard: true,
+      categoryButtonLabels: getCategoryButtonLabels()
+    };
+  }
+
+  function findCategoryByButtonLabel(categoriesById, buttonLabel) {
+    return [...categoriesById.values()].find((category) => category?.name === buttonLabel) ?? null;
+  }
+
+  function buildCategoryCatalogConfig(category) {
+    return {
+      buttonLabel: category.name,
+      headerTitle: category.name,
+      categoryId: category.id,
+      emptyMessage: `Сейчас в каталоге нет позиций в категории «${category.name}».`
+    };
+  }
+
   function summarizeIncomingText(text, fallback = "[non-text message]") {
     if (typeof text !== "string") {
       return fallback;
@@ -77,21 +102,40 @@ export function createBotHandlers({
     );
   }
 
+  async function sendCatalogUnavailable(chat, requestedButton, error) {
+    logger.error("catalog.send.failed", {
+      chat_id: chat.id,
+      chat_type: chat.type,
+      requested_button: requestedButton,
+      error: formatError(error)
+    });
+    await telegramClient.sendMessage(chat.id, catalogUnavailableMessage, {
+      chatType: chat.type,
+      ...(isPrivateChat(chat) ? buildPrivateKeyboardOptions() : {})
+    });
+  }
+
   async function sendCatalogByButton(chat, buttonLabel, options = {}) {
-    const config = getCatalogConfigByButton(buttonLabel);
+    const catalog = await catalogService.ensureCatalogReady(Boolean(options.forceRefresh));
+    const config =
+      getCatalogConfigByButton(buttonLabel) ??
+      (() => {
+        const category = findCategoryByButtonLabel(catalog.categoriesById, buttonLabel);
+        return category ? buildCategoryCatalogConfig(category) : null;
+      })();
 
     if (!config) {
       return false;
     }
 
-    const catalog = await catalogService.ensureCatalogReady(Boolean(options.forceRefresh));
     const filteredItems = filterCatalogItems(catalog.items, config);
     const includeKeyboard = isPrivateChat(chat);
+    const keyboardOptions = includeKeyboard ? buildPrivateKeyboardOptions() : {};
 
     if (filteredItems.length === 0) {
       await telegramClient.sendMessage(chat.id, config.emptyMessage, {
         chatType: chat.type,
-        includeKeyboard
+        ...keyboardOptions
       });
       return true;
     }
@@ -106,7 +150,11 @@ export function createBotHandlers({
         config.labelNames,
         catalog.pricesValidText
       );
-    } else if (config.labelName || config.labelNames) {
+    } else if (
+      (config.categoryId !== undefined && config.categoryId !== null) ||
+      config.labelName ||
+      config.labelNames
+    ) {
       messages = buildCatalogMessagesWithTitle(
         filteredItems,
         config.headerTitle,
@@ -119,7 +167,7 @@ export function createBotHandlers({
     for (const message of messages) {
       await telegramClient.sendMessage(chat.id, message, {
         chatType: chat.type,
-        includeKeyboard,
+        ...keyboardOptions,
         parseMode: "HTML"
       });
     }
@@ -151,6 +199,7 @@ export function createBotHandlers({
 
     const isPrivate = isPrivateChat(chat);
     const isCatalogUpdatedAtRequest = isPrivate && text === catalogUpdatedAtButtonLabel;
+    const isCategorySectionTap = isPrivate && text === catalogCategoriesSectionLabel;
     const requestedButton = isPrivate
       ? getCatalogConfigByButton(text)?.buttonLabel
       : isGroupPromotionsCommand(text)
@@ -160,7 +209,7 @@ export function createBotHandlers({
     if (isCatalogUpdatedAtRequest) {
       await telegramClient.sendMessage(chat.id, buildCatalogRefreshMessage(), {
         chatType: chat.type,
-        includeKeyboard: true
+        ...buildPrivateKeyboardOptions()
       });
       return;
     }
@@ -169,16 +218,7 @@ export function createBotHandlers({
       try {
         await sendCatalogByButton(chat, requestedButton);
       } catch (error) {
-        logger.error("catalog.send.failed", {
-          chat_id: chat.id,
-          chat_type: chat.type,
-          requested_button: requestedButton,
-          error: formatError(error)
-        });
-        await telegramClient.sendMessage(chat.id, catalogUnavailableMessage, {
-          chatType: chat.type,
-          includeKeyboard: isPrivate
-        });
+        await sendCatalogUnavailable(chat, requestedButton, error);
       }
 
       return;
@@ -188,9 +228,22 @@ export function createBotHandlers({
       return;
     }
 
+    if (isCategorySectionTap) {
+      return;
+    }
+
+    try {
+      if (await sendCatalogByButton(chat, text)) {
+        return;
+      }
+    } catch (error) {
+      await sendCatalogUnavailable(chat, text, error);
+      return;
+    }
+
     await telegramClient.sendMessage(chat.id, promptMessage, {
       chatType: chat.type,
-      includeKeyboard: true
+      ...buildPrivateKeyboardOptions()
     });
   }
 

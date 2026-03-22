@@ -40,13 +40,13 @@ HTTP requests and responses are logged with sensitive fields redacted, catalog s
 
 In private chats the bot shows a reply keyboard with:
 
-- `Прайс` - full catalog
+- `Полный прайс` - full catalog
 - `Акции` - combined selection of `Микролот недели`, `Сорт недели`, and `Сорт месяца`, grouped by promotion type
 - `Сорт недели` - only products with the `Сорт недели` label
 - `Сорт месяца` - only products with the `Сорт месяца` label
 - `Микролот недели` - only products with the `Микролот недели` label
-
 - `Время обновления` - last successful catalog refresh time
+- `Динамические категории` divider row followed by dynamic buttons for non-empty categories from the current catalog
 
 In group chats and supergroups the bot does not send a reply keyboard and responds only to the command `/акции`.
 

@@ -32,6 +32,18 @@ function extractPricesValidText(response) {
 }
 
 export function createCatalogService({ state, config, authService, fetchJson, logger }) {
+  function getAvailableCategories() {
+    const categoryIdsWithItems = new Set(
+      state.catalog.items
+        .map((item) => item?.category_id)
+        .filter((categoryId) => categoryId !== undefined && categoryId !== null)
+    );
+
+    return [...state.catalog.categoriesById.values()]
+      .filter((category) => category?.name && categoryIdsWithItems.has(category.id))
+      .sort((left, right) => left.name.localeCompare(right.name, "ru-RU"));
+  }
+
   function formatRefreshTimestamp(timestamp) {
     return new Intl.DateTimeFormat("ru-RU", {
       timeZone: config.catalogRefresh.timeZone,
@@ -166,6 +178,7 @@ export function createCatalogService({ state, config, authService, fetchJson, lo
 
   return {
     ensureCatalogReady,
+    getAvailableCategories,
     getLastRefreshInfo() {
       if (!state.catalog.lastRefreshedAt) {
         return null;

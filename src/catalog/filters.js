@@ -5,6 +5,10 @@ export function getCatalogConfigByButton(buttonLabel) {
 }
 
 export function filterCatalogItems(items, config) {
+  if (config?.categoryId !== undefined && config?.categoryId !== null) {
+    return items.filter((item) => item.category_id === config.categoryId);
+  }
+
   if (!config?.labelName && !config?.labelNames) {
     return items;
   }
