@@ -11,6 +11,8 @@ export function createStore() {
       items: [],
       messages: [],
       categoriesById: new Map(),
+      categoryRoots: [],
+      categoryNodesById: new Map(),
       pricesValidText: null,
       lastRefreshedAt: 0
     },

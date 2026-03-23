@@ -5,6 +5,11 @@ export function getCatalogConfigByButton(buttonLabel) {
 }
 
 export function filterCatalogItems(items, config) {
+  if (Array.isArray(config?.categoryIds) && config.categoryIds.length > 0) {
+    const allowedCategoryIds = new Set(config.categoryIds.map((categoryId) => String(categoryId)));
+    return items.filter((item) => allowedCategoryIds.has(String(item.category_id ?? "")));
+  }
+
   if (config?.categoryId !== undefined && config?.categoryId !== null) {
     return items.filter((item) => item.category_id === config.categoryId);
   }

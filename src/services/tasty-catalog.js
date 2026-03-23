@@ -1,3 +1,4 @@
+import { buildCategoryTree } from "../catalog/category-tree.js";
 import { buildCatalogMessagesWithTitle } from "../catalog/formatters.js";
 import { defaultCatalogTitle } from "../config/constants.js";
 
@@ -33,15 +34,9 @@ function extractPricesValidText(response) {
 
 export function createCatalogService({ state, config, authService, fetchJson, logger }) {
   function getAvailableCategories() {
-    const categoryIdsWithItems = new Set(
-      state.catalog.items
-        .map((item) => item?.category_id)
-        .filter((categoryId) => categoryId !== undefined && categoryId !== null)
-    );
-
-    return [...state.catalog.categoriesById.values()]
-      .filter((category) => category?.name && categoryIdsWithItems.has(category.id))
-      .sort((left, right) => left.name.localeCompare(right.name, "ru-RU"));
+    return [...state.catalog.categoryNodesById.values()]
+      .filter((categoryNode) => categoryNode.directItemCount > 0)
+      .sort((left, right) => left.pathLabel.localeCompare(right.pathLabel, "ru-RU"));
   }
 
   function formatRefreshTimestamp(timestamp) {
@@ -103,11 +98,17 @@ export function createCatalogService({ state, config, authService, fetchJson, lo
       fetchCategories(),
       fetchCatalog()
     ]);
+    const { roots: categoryRoots, nodesById: categoryNodesById } = buildCategoryTree(
+      categoriesById,
+      items
+    );
     const lastRefreshedAt = Date.now();
 
     state.catalog = {
       items,
       categoriesById,
+      categoryRoots,
+      categoryNodesById,
       messages: buildCatalogMessagesWithTitle(items, defaultCatalogTitle, categoriesById),
       pricesValidText,
       lastRefreshedAt
@@ -182,6 +183,19 @@ export function createCatalogService({ state, config, authService, fetchJson, lo
       return ensureCatalogReady(forceRefresh);
     },
     getAvailableCategories,
+    getCategoryTree() {
+      return state.catalog.categoryRoots;
+    },
+    getCategoryNode(categoryId) {
+      const normalizedCategoryId =
+        categoryId === undefined || categoryId === null ? null : String(categoryId).trim();
+
+      if (!normalizedCategoryId) {
+        return null;
+      }
+
+      return state.catalog.categoryNodesById.get(normalizedCategoryId) ?? null;
+    },
     getLastRefreshInfo() {
       if (!state.catalog.lastRefreshedAt) {
         return null;

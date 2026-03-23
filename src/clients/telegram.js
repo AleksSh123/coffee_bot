@@ -23,10 +23,18 @@ function buildKeyboardRows(buttonLabels, itemsPerRow = 2) {
   return rows;
 }
 
-function buildKeyboard(categoryButtonLabels = [], includeMiniAppButton = false) {
+function buildKeyboard(categoryNavigation = null, includeMiniAppButton = false) {
   const categoryRows =
-    categoryButtonLabels.length > 0
-      ? [[{ text: catalogCategoriesSectionLabel }], ...buildKeyboardRows(categoryButtonLabels)]
+    categoryNavigation && Array.isArray(categoryNavigation.buttonLabels)
+      ? [
+          [
+            {
+              text: categoryNavigation.sectionLabel ?? catalogCategoriesSectionLabel
+            }
+          ],
+          ...buildKeyboardRows(categoryNavigation.buttonLabels),
+          ...((categoryNavigation.controlLabels ?? []).map((label) => [{ text: label }]))
+        ]
       : [];
   const miniAppRows = includeMiniAppButton ? [[{ text: miniAppButtonLabel }]] : [];
 
@@ -87,7 +95,7 @@ export function createTelegramClient({ apiBaseUrl, fetchJson, logger, messageLog
       payload.reply_markup = options.replyMarkup;
     } else if (options.includeKeyboard) {
       payload.reply_markup = buildKeyboard(
-        options.categoryButtonLabels ?? [],
+        options.categoryNavigation ?? null,
         Boolean(options.includeMiniAppButton)
       );
     }

@@ -251,6 +251,23 @@ button {
   margin-bottom: 14px;
 }
 
+.filters--nested {
+  margin-bottom: 0;
+}
+
+.filter-section + .filter-section {
+  margin-top: 6px;
+}
+
+.filter-section__label {
+  margin-bottom: 8px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .filter-chip {
   border: 0;
 }

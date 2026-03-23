@@ -4,8 +4,10 @@ import {
 } from "../catalog/formatters.js";
 import { filterCatalogItems, getCatalogConfigByButton } from "../catalog/filters.js";
 import {
+  catalogBackButtonLabel,
   catalogCategoriesSectionLabel,
   catalogNotUpdatedYetMessage,
+  catalogSupercategoriesSectionLabel,
   catalogUpdatedAtButtonLabel,
   catalogUnavailableMessage,
   miniAppButtonLabel,
@@ -24,18 +26,65 @@ export function createBotHandlers({
   logger,
   messageLogger
 }) {
+  const categoryNavigationStateByChatId = new Map();
+
   function hasMiniAppEntry() {
     return Boolean(miniApp?.publicUrl);
   }
 
-  function getCategoryButtonLabels() {
-    return catalogService.getAvailableCategories().map((category) => category.name);
+  function getNormalizedChatId(chatId) {
+    return String(chatId);
   }
 
-  function buildPrivateKeyboardOptions() {
+  function getCategoryNavigationState(chatId) {
+    return categoryNavigationStateByChatId.get(getNormalizedChatId(chatId)) ?? null;
+  }
+
+  function setCategoryNavigationState(chatId, categoryId) {
+    const normalizedChatId = getNormalizedChatId(chatId);
+
+    if (!categoryId) {
+      categoryNavigationStateByChatId.delete(normalizedChatId);
+      return;
+    }
+
+    categoryNavigationStateByChatId.set(normalizedChatId, String(categoryId));
+  }
+
+  function buildCategoryNavigation(chatId) {
+    const roots = catalogService.getCategoryTree();
+    const currentNode = catalogService.getCategoryNode(getCategoryNavigationState(chatId));
+
+    if (getCategoryNavigationState(chatId) && !currentNode) {
+      setCategoryNavigationState(chatId, null);
+    }
+
+    return {
+      currentNode: currentNode ?? null,
+      availableNodes: (currentNode ?? null)?.children ?? roots,
+      sectionLabel: currentNode
+        ? `Раздел: ${currentNode.pathLabel}`
+        : catalogSupercategoriesSectionLabel,
+      controlLabels: currentNode ? [catalogBackButtonLabel] : []
+    };
+  }
+
+  function buildPrivateKeyboardOptions(chatId) {
     return {
       includeKeyboard: true,
-      categoryButtonLabels: getCategoryButtonLabels(),
+      categoryNavigation: (() => {
+        const navigation = buildCategoryNavigation(chatId);
+
+        if (navigation.availableNodes.length === 0) {
+          return null;
+        }
+
+        return {
+          sectionLabel: navigation.sectionLabel,
+          buttonLabels: navigation.availableNodes.map((categoryNode) => categoryNode.name),
+          controlLabels: navigation.controlLabels
+        };
+      })(),
       includeMiniAppButton: hasMiniAppEntry()
     };
   }
@@ -44,7 +93,7 @@ export function createBotHandlers({
     if (!hasMiniAppEntry()) {
       await telegramClient.sendMessage(chat.id, miniAppUnavailableMessage, {
         chatType: chat.type,
-        ...buildPrivateKeyboardOptions()
+        ...buildPrivateKeyboardOptions(chat.id)
       });
       return;
     }
@@ -66,16 +115,12 @@ export function createBotHandlers({
     });
   }
 
-  function findCategoryByButtonLabel(categoriesById, buttonLabel) {
-    return [...categoriesById.values()].find((category) => category?.name === buttonLabel) ?? null;
-  }
-
-  function buildCategoryCatalogConfig(category) {
+  function buildCategoryCatalogConfig(categoryNode) {
     return {
-      buttonLabel: category.name,
-      headerTitle: category.name,
-      categoryId: category.id,
-      emptyMessage: `Сейчас в каталоге нет позиций в категории «${category.name}».`
+      buttonLabel: categoryNode.name,
+      headerTitle: categoryNode.pathLabel,
+      categoryIds: categoryNode.branchCategoryIds,
+      emptyMessage: `Сейчас в каталоге нет позиций в категории «${categoryNode.pathLabel}».`
     };
   }
 
@@ -146,26 +191,15 @@ export function createBotHandlers({
     });
     await telegramClient.sendMessage(chat.id, catalogUnavailableMessage, {
       chatType: chat.type,
-      ...(isPrivateChat(chat) ? buildPrivateKeyboardOptions() : {})
+      ...(isPrivateChat(chat) ? buildPrivateKeyboardOptions(chat.id) : {})
     });
   }
 
-  async function sendCatalogByButton(chat, buttonLabel, options = {}) {
+  async function sendCatalogByConfig(chat, config, options = {}) {
     const catalog = await catalogService.ensureCatalogReady(Boolean(options.forceRefresh));
-    const config =
-      getCatalogConfigByButton(buttonLabel) ??
-      (() => {
-        const category = findCategoryByButtonLabel(catalog.categoriesById, buttonLabel);
-        return category ? buildCategoryCatalogConfig(category) : null;
-      })();
-
-    if (!config) {
-      return false;
-    }
-
     const filteredItems = filterCatalogItems(catalog.items, config);
     const includeKeyboard = isPrivateChat(chat);
-    const keyboardOptions = includeKeyboard ? buildPrivateKeyboardOptions() : {};
+    const keyboardOptions = includeKeyboard ? buildPrivateKeyboardOptions(chat.id) : {};
 
     if (filteredItems.length === 0) {
       await telegramClient.sendMessage(chat.id, config.emptyMessage, {
@@ -186,6 +220,7 @@ export function createBotHandlers({
         catalog.pricesValidText
       );
     } else if (
+      (Array.isArray(config.categoryIds) && config.categoryIds.length > 0) ||
       (config.categoryId !== undefined && config.categoryId !== null) ||
       config.labelName ||
       config.labelNames
@@ -208,6 +243,69 @@ export function createBotHandlers({
     }
 
     return true;
+  }
+
+  async function sendCatalogByButton(chat, buttonLabel, options = {}) {
+    const config = getCatalogConfigByButton(buttonLabel);
+
+    if (!config) {
+      return false;
+    }
+
+    return sendCatalogByConfig(chat, config, options);
+  }
+
+  function findNodeByName(nodes, buttonLabel) {
+    return nodes.find((node) => node.name === buttonLabel) ?? null;
+  }
+
+  async function handleCategoryNavigation(chat, text) {
+    await catalogService.ensureCatalogReady();
+    const navigation = buildCategoryNavigation(chat.id);
+
+    if (text === catalogBackButtonLabel) {
+      setCategoryNavigationState(chat.id, navigation.currentNode?.parentId ?? null);
+
+      await telegramClient.sendMessage(chat.id, "Выберите категорию.", {
+        chatType: chat.type,
+        ...buildPrivateKeyboardOptions(chat.id)
+      });
+      return true;
+    }
+
+    const matchedNode =
+      findNodeByName(navigation.availableNodes, text) ??
+      findNodeByName(catalogService.getCategoryTree(), text) ??
+      (() => {
+        const uniqueDirectCategories = catalogService
+          .getAvailableCategories()
+          .filter((categoryNode) => categoryNode.name === text);
+
+        if (uniqueDirectCategories.length !== 1) {
+          return null;
+        }
+
+        return catalogService.getCategoryNode(uniqueDirectCategories[0].id);
+      })();
+
+    if (!matchedNode) {
+      return false;
+    }
+
+    if (matchedNode.children.length > 0) {
+      setCategoryNavigationState(chat.id, matchedNode.id);
+      await telegramClient.sendMessage(
+        chat.id,
+        `Раздел «${matchedNode.pathLabel}». Выберите следующую категорию.`,
+        {
+          chatType: chat.type,
+          ...buildPrivateKeyboardOptions(chat.id)
+        }
+      );
+      return true;
+    }
+
+    return sendCatalogByConfig(chat, buildCategoryCatalogConfig(matchedNode));
   }
 
   async function handleUpdate(update) {
@@ -234,7 +332,6 @@ export function createBotHandlers({
 
     const isPrivate = isPrivateChat(chat);
     const isCatalogUpdatedAtRequest = isPrivate && text === catalogUpdatedAtButtonLabel;
-    const isCategorySectionTap = isPrivate && text === catalogCategoriesSectionLabel;
     const isMiniAppRequest = isPrivate && text === miniAppButtonLabel;
     const requestedButton = isPrivate
       ? getCatalogConfigByButton(text)?.buttonLabel
@@ -245,7 +342,7 @@ export function createBotHandlers({
     if (isCatalogUpdatedAtRequest) {
       await telegramClient.sendMessage(chat.id, buildCatalogRefreshMessage(), {
         chatType: chat.type,
-        ...buildPrivateKeyboardOptions()
+        ...buildPrivateKeyboardOptions(chat.id)
       });
       return;
     }
@@ -269,12 +366,16 @@ export function createBotHandlers({
       return;
     }
 
-    if (isCategorySectionTap) {
+    if (
+      text === catalogCategoriesSectionLabel ||
+      text === catalogSupercategoriesSectionLabel ||
+      text === buildCategoryNavigation(chat.id).sectionLabel
+    ) {
       return;
     }
 
     try {
-      if (await sendCatalogByButton(chat, text)) {
+      if (await handleCategoryNavigation(chat, text)) {
         return;
       }
     } catch (error) {
@@ -284,7 +385,7 @@ export function createBotHandlers({
 
     await telegramClient.sendMessage(chat.id, promptMessage, {
       chatType: chat.type,
-      ...buildPrivateKeyboardOptions()
+      ...buildPrivateKeyboardOptions(chat.id)
     });
   }
 

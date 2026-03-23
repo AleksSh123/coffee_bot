@@ -7,7 +7,7 @@ const state = {
   },
   authToken: null,
   catalog: null,
-  categoryFilter: null,
+  categoryPath: [],
   draftOrder: null,
   isBusy: false,
   isTelegramContext: false,
@@ -111,6 +111,75 @@ function getOrderItemByOfferKey(offerKey) {
   return state.draftOrder?.items?.find((item) => item.offerKey === offerKey) ?? null;
 }
 
+function buildCategoryNodeMap(nodes = [], nodesById = new Map(), parentPath = []) {
+  for (const node of nodes) {
+    const pathNames = [...parentPath, node.name];
+    const normalizedNode = {
+      ...node,
+      id: String(node.id),
+      parentId: node.parentId ? String(node.parentId) : null,
+      branchCategoryIds: Array.isArray(node.branchCategoryIds)
+        ? node.branchCategoryIds.map((categoryId) => String(categoryId))
+        : [String(node.id)],
+      pathNames,
+      pathLabel: node.pathLabel ?? pathNames.join(" / "),
+      children: Array.isArray(node.children) ? node.children : []
+    };
+
+    nodesById.set(normalizedNode.id, normalizedNode);
+    buildCategoryNodeMap(normalizedNode.children, nodesById, pathNames);
+  }
+
+  return nodesById;
+}
+
+function getSelectedCategoryNode(levelIndex = state.categoryPath.length - 1) {
+  if (!state.catalog?.categoryNodesById || levelIndex < 0) {
+    return null;
+  }
+
+  const categoryId = state.categoryPath[levelIndex];
+  return categoryId ? state.catalog.categoryNodesById.get(categoryId) ?? null : null;
+}
+
+function getActiveBranchCategoryIds() {
+  const selectedNode = getSelectedCategoryNode();
+
+  if (!selectedNode) {
+    return null;
+  }
+
+  return new Set(selectedNode.branchCategoryIds);
+}
+
+function syncCategoryPath() {
+  if (!state.catalog?.categoryNodesById || state.categoryPath.length === 0) {
+    state.categoryPath = [];
+    return;
+  }
+
+  const nextPath = [];
+
+  for (const categoryId of state.categoryPath) {
+    const normalizedCategoryId = String(categoryId);
+    const categoryNode = state.catalog.categoryNodesById.get(normalizedCategoryId);
+
+    if (!categoryNode) {
+      break;
+    }
+
+    const expectedParentId = nextPath.length === 0 ? null : nextPath[nextPath.length - 1];
+
+    if (categoryNode.parentId !== expectedParentId) {
+      break;
+    }
+
+    nextPath.push(normalizedCategoryId);
+  }
+
+  state.categoryPath = nextPath;
+}
+
 function renderUserSummary() {
   if (!state.user) {
     elements.userSummary.innerHTML = "";
@@ -168,20 +237,66 @@ function setActiveTab(nextTabId) {
 }
 
 function renderCategoryFilters() {
-  const buttons = [
+  const categoryTree = state.catalog?.categoryTree ?? [];
+
+  if (categoryTree.length === 0) {
+    elements.categoryFilters.innerHTML = "";
+    return;
+  }
+
+  const rows = [
     {
-      id: null,
-      label: "Все категории"
-    },
-    ...(state.catalog?.categories ?? [])
+      level: 0,
+      label: "Надкатегории",
+      buttons: [
+        {
+          id: null,
+          label: "Все товары"
+        },
+        ...categoryTree.map((category) => ({
+          id: category.id,
+          label: category.name
+        }))
+      ]
+    }
   ];
 
-  elements.categoryFilters.innerHTML = buttons
-    .map((category) => {
-      const id = category.id ?? "";
-      const isActive = (category.id ?? null) === state.categoryFilter;
-      return `<button class="filter-chip ${isActive ? "is-active" : ""}" type="button" data-category-id="${escapeHtml(id)}">${escapeHtml(category.label ?? category.name)}</button>`;
-    })
+  let parentNode = getSelectedCategoryNode(0) ?? null;
+  let level = 1;
+
+  while (parentNode?.children?.length) {
+    rows.push({
+      level,
+      label: parentNode.name,
+      buttons: parentNode.children.map((category) => ({
+        id: category.id,
+        label: category.name
+      }))
+    });
+    parentNode = getSelectedCategoryNode(level) ?? null;
+    level += 1;
+  }
+
+  elements.categoryFilters.innerHTML = rows
+    .map(
+      (row) => `
+        <div class="filter-section">
+          <div class="filter-section__label">${escapeHtml(row.label)}</div>
+          <div class="filters filters--nested">
+            ${row.buttons
+              .map((category) => {
+                const id = category.id ?? "";
+                const isActive =
+                  category.id === null
+                    ? state.categoryPath.length === 0
+                    : state.categoryPath[row.level] === category.id;
+                return `<button class="filter-chip ${isActive ? "is-active" : ""}" type="button" data-category-level="${row.level}" data-category-id="${escapeHtml(id)}">${escapeHtml(category.label)}</button>`;
+              })
+              .join("")}
+          </div>
+        </div>
+      `
+    )
     .join("");
 }
 
@@ -203,12 +318,13 @@ function renderCatalog() {
     return;
   }
 
+  const activeBranchCategoryIds = getActiveBranchCategoryIds();
   const filteredItems = state.catalog.items.filter((item) => {
-    if (!state.categoryFilter) {
+    if (!activeBranchCategoryIds) {
       return true;
     }
 
-    return item.categoryId === state.categoryFilter;
+    return activeBranchCategoryIds.has(String(item.categoryId ?? ""));
   });
 
   if (filteredItems.length === 0) {
@@ -489,7 +605,11 @@ async function apiRequest(path, options = {}) {
 
 async function refreshCatalog() {
   const catalogPayload = await apiRequest("/api/catalog");
-  state.catalog = catalogPayload;
+  state.catalog = {
+    ...catalogPayload,
+    categoryNodesById: buildCategoryNodeMap(catalogPayload.categoryTree ?? [])
+  };
+  syncCategoryPath();
 }
 
 async function refreshDraftOrder() {
@@ -681,13 +801,32 @@ function attachEvents() {
   });
 
   elements.categoryFilters.addEventListener("click", (event) => {
-    const button = event.target.closest("[data-category-id]");
+    const button = event.target.closest("[data-category-id][data-category-level]");
 
     if (!button) {
       return;
     }
 
-    state.categoryFilter = button.dataset.categoryId || null;
+    const level = Number.parseInt(button.dataset.categoryLevel ?? "", 10);
+    const categoryId = button.dataset.categoryId || null;
+
+    if (!Number.isInteger(level) || level < 0) {
+      return;
+    }
+
+    if (!categoryId) {
+      state.categoryPath = [];
+      renderCategoryFilters();
+      renderCatalog();
+      return;
+    }
+
+    if (state.categoryPath[level] === categoryId) {
+      state.categoryPath = state.categoryPath.slice(0, level);
+    } else {
+      state.categoryPath = [...state.categoryPath.slice(0, level), categoryId];
+    }
+
     renderCategoryFilters();
     renderCatalog();
   });

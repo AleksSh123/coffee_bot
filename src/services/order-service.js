@@ -220,7 +220,12 @@ export function createOrderService({ db, catalogService, logger }) {
   async function getDraftOrder(identity) {
     return db.transaction(async (executor) => {
       const user = await ensureTelegramUser(identity, executor);
-      const orderRow = await ensureDraftOrder(executor, user.id);
+      const orderRow = await loadDraftOrder(executor, user.id);
+
+      if (!orderRow) {
+        return null;
+      }
+
       const orderData = await loadOrderById(executor, orderRow.id);
 
       return mapOrderRow(orderRow, orderData.items);
@@ -329,7 +334,12 @@ export function createOrderService({ db, catalogService, logger }) {
 
     return db.transaction(async (executor) => {
       const user = await ensureTelegramUser(identity, executor);
-      const orderRow = await ensureDraftOrder(executor, user.id);
+      const orderRow = await loadDraftOrder(executor, user.id);
+
+      if (!orderRow) {
+        throw createHttpError(404, "Draft order was not found", "order_draft_not_found");
+      }
+
       const { rows } = await executor.query(
         `
           UPDATE order_items
@@ -354,7 +364,12 @@ export function createOrderService({ db, catalogService, logger }) {
 
     return db.transaction(async (executor) => {
       const user = await ensureTelegramUser(identity, executor);
-      const orderRow = await ensureDraftOrder(executor, user.id);
+      const orderRow = await loadDraftOrder(executor, user.id);
+
+      if (!orderRow) {
+        throw createHttpError(404, "Draft order was not found", "order_draft_not_found");
+      }
+
       const { rows } = await executor.query(
         `
           DELETE FROM order_items
@@ -378,7 +393,12 @@ export function createOrderService({ db, catalogService, logger }) {
 
     return db.transaction(async (executor) => {
       const user = await ensureTelegramUser(identity, executor);
-      const orderRow = await ensureDraftOrder(executor, user.id);
+      const orderRow = await loadDraftOrder(executor, user.id);
+
+      if (!orderRow) {
+        throw createHttpError(404, "Draft order was not found", "order_draft_not_found");
+      }
+
       const orderData = await loadOrderById(executor, orderRow.id);
 
       if (orderData.items.length === 0) {
@@ -465,6 +485,8 @@ export function createOrderService({ db, catalogService, logger }) {
     if (filters.lifecycleStatus) {
       params.push(filters.lifecycleStatus);
       whereClauses.push(`o.lifecycle_status = $${params.length}`);
+    } else {
+      whereClauses.push(`o.lifecycle_status <> 'draft'`);
     }
 
     if (filters.paymentStatus) {

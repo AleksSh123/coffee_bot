@@ -105,10 +105,23 @@ function getBearerToken(request) {
   return token;
 }
 
+function serializeCategoryNode(node) {
+  return {
+    id: String(node.id),
+    name: node.name,
+    parentId: node.parentId ? String(node.parentId) : null,
+    pathLabel: node.pathLabel,
+    totalItemCount: node.totalItemCount,
+    branchCategoryIds: node.branchCategoryIds.map((categoryId) => String(categoryId)),
+    children: node.children.map(serializeCategoryNode)
+  };
+}
+
 function serializeCatalog(snapshot, catalogService) {
   const nonEmptyCategories = catalogService.getAvailableCategories().map((category) => ({
     id: String(category.id),
-    name: category.name
+    name: category.name,
+    pathLabel: category.pathLabel
   }));
 
   const items = snapshot.items.map((item) => ({
@@ -135,6 +148,7 @@ function serializeCatalog(snapshot, catalogService) {
       snapshot.lastRefreshedAt > 0 ? new Date(snapshot.lastRefreshedAt).toISOString() : null,
     pricesValidText: snapshot.pricesValidText ?? null,
     categories: nonEmptyCategories,
+    categoryTree: catalogService.getCategoryTree().map(serializeCategoryNode),
     items
   };
 }
