@@ -233,13 +233,13 @@ export function createApiServer({
         return;
       }
 
-      const identity = await requireIdentity(request);
-
       if (request.method === "GET" && url.pathname === "/api/catalog") {
         const snapshot = await catalogService.getCatalogSnapshot();
         sendJson(response, 200, serializeCatalog(snapshot, catalogService));
         return;
       }
+
+      const identity = await requireIdentity(request);
 
       if (request.method === "GET" && url.pathname === "/api/me") {
         const user = await orderService.ensureTelegramUser(identity);
@@ -355,6 +355,16 @@ export function createApiServer({
       throw createHttpError(404, "Route was not found", "route_not_found");
     } catch (error) {
       statusCode = error?.status ?? 500;
+
+      if (url.pathname === "/api/miniapp/auth" || statusCode >= 500) {
+        logger.warn("api.request.rejected", {
+          method: request.method,
+          path: url.pathname,
+          status: statusCode,
+          error_code: error?.code ?? "internal_error",
+          error: error instanceof Error ? error.message : String(error)
+        });
+      }
 
       if (statusCode >= 500) {
         logger.error("api.request.failed", {

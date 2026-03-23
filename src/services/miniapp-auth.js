@@ -31,7 +31,7 @@ function parseInitData(initData) {
   const fields = [];
 
   for (const [key, value] of params.entries()) {
-    if (key === "hash" || key === "signature") {
+    if (key === "hash") {
       continue;
     }
 

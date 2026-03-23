@@ -40,9 +40,41 @@ const elements = {
 const telegramWebApp = window.Telegram?.WebApp ?? null;
 const apiBasePath = "";
 
+function applyTelegramTheme() {
+  const root = document.documentElement;
+  const isDark = telegramWebApp?.colorScheme === "dark";
+  const themeParams = telegramWebApp?.themeParams ?? {};
+
+  root.dataset.theme = isDark ? "dark" : "light";
+
+  if (themeParams.bg_color) {
+    root.style.setProperty("--telegram-bg", themeParams.bg_color);
+  }
+
+  if (themeParams.secondary_bg_color) {
+    root.style.setProperty("--telegram-secondary-bg", themeParams.secondary_bg_color);
+  }
+
+  if (themeParams.text_color) {
+    root.style.setProperty("--telegram-text", themeParams.text_color);
+  }
+
+  if (themeParams.hint_color) {
+    root.style.setProperty("--telegram-text-muted", themeParams.hint_color);
+  }
+}
+
 function setStatus(message, tone = "neutral") {
   elements.statusBanner.textContent = message;
   elements.statusBanner.dataset.tone = tone;
+}
+
+function buildAuthRequiredMessage() {
+  if (!state.isTelegramContext) {
+    return "Откройте Mini App внутри Telegram, чтобы загрузить каталог и работать с заявками.";
+  }
+
+  return "Не удалось подтвердить доступ через Telegram. Закройте окно и откройте Mini App снова из кнопки в боте.";
 }
 
 function formatPrice(value) {
@@ -100,11 +132,14 @@ function renderUserSummary() {
 }
 
 function buildTabs() {
-  const tabs = [
-    { id: "catalog", label: "Каталог" },
-    { id: "draft", label: "Черновик" },
-    { id: "orders", label: "Мои заявки" }
-  ];
+  const tabs = [{ id: "catalog", label: "Каталог" }];
+
+  if (state.authToken) {
+    tabs.push(
+      { id: "draft", label: "Черновик" },
+      { id: "orders", label: "Мои заявки" }
+    );
+  }
 
   if (state.user?.isAdmin) {
     tabs.push({ id: "admin", label: "Админ" });
@@ -123,12 +158,13 @@ function renderTabs() {
 }
 
 function setActiveTab(nextTabId) {
-  state.activeTab = nextTabId;
+  const availableTabs = new Set(buildTabs().map((tab) => tab.id));
+  state.activeTab = availableTabs.has(nextTabId) ? nextTabId : "catalog";
   renderTabs();
-  elements.catalogPanel.classList.toggle("is-hidden", nextTabId !== "catalog");
-  elements.draftPanel.classList.toggle("is-hidden", nextTabId !== "draft");
-  elements.ordersPanel.classList.toggle("is-hidden", nextTabId !== "orders");
-  elements.adminPanel.classList.toggle("is-hidden", nextTabId !== "admin");
+  elements.catalogPanel.classList.toggle("is-hidden", state.activeTab !== "catalog");
+  elements.draftPanel.classList.toggle("is-hidden", state.activeTab !== "draft");
+  elements.ordersPanel.classList.toggle("is-hidden", state.activeTab !== "orders");
+  elements.adminPanel.classList.toggle("is-hidden", state.activeTab !== "admin");
 }
 
 function renderCategoryFilters() {
@@ -150,11 +186,13 @@ function renderCategoryFilters() {
 }
 
 function buildOfferQuantityControl(offerKey, quantity) {
+  const isDisabled = !state.authToken;
+
   return `
     <div class="qty-control" data-offer-key="${escapeHtml(offerKey)}">
-      <button class="qty-button" type="button" data-action="decrease-offer-qty">-</button>
-      <input class="qty-input" type="number" min="1" step="1" value="${quantity}" data-action="offer-qty-input" />
-      <button class="qty-button" type="button" data-action="increase-offer-qty">+</button>
+      <button class="qty-button" type="button" data-action="decrease-offer-qty" ${isDisabled ? "disabled" : ""}>-</button>
+      <input class="qty-input" type="number" min="1" step="1" value="${quantity}" data-action="offer-qty-input" ${isDisabled ? "disabled" : ""} />
+      <button class="qty-button" type="button" data-action="increase-offer-qty" ${isDisabled ? "disabled" : ""}>+</button>
     </div>
   `;
 }
@@ -203,8 +241,9 @@ function renderCatalog() {
                   data-action="save-offer"
                   data-product-id="${escapeHtml(item.id)}"
                   data-offer-key="${escapeHtml(offer.offerKey)}"
+                  ${!state.authToken ? "disabled" : ""}
                 >
-                  ${existingOrderItem ? "Обновить" : "В заявку"}
+                  ${state.authToken ? (existingOrderItem ? "Обновить" : "В заявку") : "Требуется Telegram"}
                 </button>
               </div>
             </div>
@@ -229,9 +268,21 @@ function renderCatalog() {
       `;
     })
     .join("");
+
+  if (!state.authToken) {
+    elements.catalogList.innerHTML =
+      `<div class="empty-state">${escapeHtml(buildAuthRequiredMessage())}</div>` +
+      elements.catalogList.innerHTML;
+  }
 }
 
 function renderDraft() {
+  if (!state.authToken) {
+    elements.draftList.innerHTML = `<div class="empty-state">${escapeHtml(buildAuthRequiredMessage())}</div>`;
+    elements.draftTotal.textContent = "";
+    return;
+  }
+
   const draftOrder = state.draftOrder;
 
   if (!draftOrder || draftOrder.items.length === 0) {
@@ -282,6 +333,11 @@ function renderDraft() {
 }
 
 function renderOrders() {
+  if (!state.authToken) {
+    elements.ordersList.innerHTML = `<div class="empty-state">${escapeHtml(buildAuthRequiredMessage())}</div>`;
+    return;
+  }
+
   const submittedOrders = state.orders.filter((order) => order.lifecycleStatus !== "draft");
 
   if (submittedOrders.length === 0) {
@@ -349,6 +405,11 @@ function buildAdminActionButton(order, field, activeValue, nextValue, label) {
 }
 
 function renderAdminOrders() {
+  if (!state.authToken) {
+    elements.adminOrdersList.innerHTML = "";
+    return;
+  }
+
   if (!state.user?.isAdmin) {
     elements.adminOrdersList.innerHTML = "";
     return;
@@ -466,7 +527,16 @@ async function refreshAdminOrders() {
 }
 
 async function refreshAllData() {
-  await Promise.all([refreshCatalog(), refreshDraftOrder(), refreshOwnOrders(), refreshAdminOrders()]);
+  await refreshCatalog();
+
+  if (state.authToken) {
+    await Promise.all([refreshDraftOrder(), refreshOwnOrders(), refreshAdminOrders()]);
+  } else {
+    state.draftOrder = null;
+    state.orders = [];
+    state.adminOrders = [];
+  }
+
   renderAll();
 }
 
@@ -480,8 +550,6 @@ async function authenticate() {
 
   if (!initData) {
     state.isTelegramContext = false;
-    setStatus("Откройте mini app внутри Telegram, чтобы подтвердить личность.", "warning");
-    renderAll();
     return false;
   }
 
@@ -751,25 +819,34 @@ function attachEvents() {
 
 async function bootstrap() {
   attachEvents();
+  renderAll();
+  applyTelegramTheme();
 
   if (telegramWebApp) {
     telegramWebApp.ready();
     telegramWebApp.expand();
+    telegramWebApp.onEvent?.("themeChanged", applyTelegramTheme);
   }
 
   try {
     const authenticated = await authenticate();
-
-    if (!authenticated) {
-      return;
-    }
-
-    setStatus("Загружаю каталог и ваши заявки...", "neutral");
+    setStatus(
+      authenticated
+        ? "Загружаю каталог и ваши заявки..."
+        : "Загружаю каталог. Для работы с заявками откройте Mini App внутри Telegram.",
+      authenticated ? "neutral" : "warning"
+    );
     await refreshAllData();
     renderAll();
-    setStatus("Mini App готов к работе.", "success");
+    setStatus(
+      authenticated
+        ? "Mini App готов к работе."
+        : "Каталог загружен. Для работы с заявками нужен Telegram-контекст.",
+      authenticated ? "success" : "warning"
+    );
   } catch (error) {
     console.error(error);
+    renderAll();
     setStatus(error instanceof Error ? error.message : String(error), "error");
   }
 }
