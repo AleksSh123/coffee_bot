@@ -89,6 +89,33 @@ function formatPrice(value) {
   })} ₽`;
 }
 
+function formatWeight(value) {
+  const numericValue = Number(value);
+
+  if (!Number.isFinite(numericValue) || numericValue <= 0) {
+    return null;
+  }
+
+  if (numericValue >= 1000 && numericValue % 1000 === 0) {
+    return `${numericValue / 1000} кг`;
+  }
+
+  return `${numericValue} г`;
+}
+
+function formatOfferType(value) {
+  const labels = {
+    bean_coffee: "зерно",
+    ground_coffee: "молотый"
+  };
+
+  if (!value) {
+    return null;
+  }
+
+  return labels[value] ?? String(value).replaceAll("_", " ");
+}
+
 function escapeHtml(value) {
   return String(value)
     .replaceAll("&", "&amp;")
@@ -105,6 +132,37 @@ function getDisplayName(user) {
   }
 
   return user.username ? `@${user.username}` : `Telegram ID ${user.telegramUserId}`;
+}
+
+function formatOrderItemVariant(item) {
+  const offerName = typeof item.offerName === "string" ? item.offerName.trim() : "";
+  const weightLabel = formatWeight(item.weight);
+  const offerTypeLabel = formatOfferType(item.offerType);
+  const normalizedOfferName = offerName.toLowerCase();
+  const extraDetails = [
+    weightLabel && normalizedOfferName.includes(weightLabel.toLowerCase()) ? null : weightLabel,
+    offerTypeLabel && normalizedOfferName.includes(offerTypeLabel.toLowerCase())
+      ? null
+      : offerTypeLabel
+  ].filter(Boolean);
+
+  if (offerName && extraDetails.length > 0) {
+    return `${offerName} · ${extraDetails.join(", ")}`;
+  }
+
+  if (offerName) {
+    return offerName;
+  }
+
+  if (extraDetails.length > 0) {
+    return extraDetails.join(", ");
+  }
+
+  return "вариант не указан";
+}
+
+function formatOrderItemPricing(item) {
+  return `Количество: ${item.quantity} · Цена: ${formatPrice(item.price)}/шт`;
 }
 
 function getOrderItemByOfferKey(offerKey) {
@@ -486,10 +544,18 @@ function renderOrders() {
               order.fulfillmentStatus
             )}</span>
           </div>
-          <div class="inline-note">
+          <div class="order-lines">
             ${order.items
-              .map((item) => `${escapeHtml(item.productName)} × ${item.quantity}`)
-              .join("<br />")}
+              .map(
+                (item) => `
+                  <div class="order-line">
+                    <div class="order-line__name">${escapeHtml(item.productName)}</div>
+                    <div class="order-line__meta">${escapeHtml(formatOrderItemVariant(item))}</div>
+                    <div class="order-line__price">${escapeHtml(formatOrderItemPricing(item))}</div>
+                  </div>
+                `
+              )
+              .join("")}
           </div>
         </article>
       `
@@ -515,9 +581,14 @@ function renderAdminFilters() {
 
 function buildAdminActionButton(order, field, activeValue, nextValue, label) {
   const currentValue = order[field];
-  const isDisabled = order.lifecycleStatus !== "submitted" || currentValue === nextValue;
+  const isCurrentState = currentValue === nextValue;
+  const isDisabled = order.lifecycleStatus !== "submitted" || isCurrentState;
+  const isActionAvailable = order.lifecycleStatus === "submitted" && !isCurrentState;
+  const stateClass = isActionAvailable
+    ? "admin-action-button--emphasis"
+    : "admin-action-button--muted";
 
-  return `<button class="${activeValue === currentValue ? "primary-button" : "secondary-button"}" type="button" data-action="admin-update-status" data-order-id="${order.id}" data-status-field="${field}" data-status-value="${nextValue}" ${isDisabled ? "disabled" : ""}>${escapeHtml(label)}</button>`;
+  return `<button class="admin-action-button ${stateClass}" type="button" data-action="admin-update-status" data-order-id="${order.id}" data-status-field="${field}" data-status-value="${nextValue}" ${isDisabled ? "disabled" : ""}>${escapeHtml(label)}</button>`;
 }
 
 function renderAdminOrders() {
@@ -553,8 +624,18 @@ function renderAdminOrders() {
             <span class="status-chip status-chip--${escapeHtml(order.paymentStatus)}">${escapeHtml(order.paymentStatus)}</span>
             <span class="status-chip status-chip--${escapeHtml(order.fulfillmentStatus)}">${escapeHtml(order.fulfillmentStatus)}</span>
           </div>
-          <div class="admin-order-items inline-note">
-            ${order.items.map((item) => `${escapeHtml(item.productName)} · ${escapeHtml(item.offerName)} × ${item.quantity}`).join("<br />")}
+          <div class="admin-order-items order-lines">
+            ${order.items
+              .map(
+                (item) => `
+                  <div class="order-line">
+                    <div class="order-line__name">${escapeHtml(item.productName)}</div>
+                    <div class="order-line__meta">${escapeHtml(formatOrderItemVariant(item))}</div>
+                    <div class="order-line__price">${escapeHtml(formatOrderItemPricing(item))}</div>
+                  </div>
+                `
+              )
+              .join("")}
           </div>
           <div class="admin-actions">
             <div class="admin-actions__row">

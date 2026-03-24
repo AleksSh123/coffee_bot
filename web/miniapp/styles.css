@@ -471,10 +471,91 @@ button {
   margin-top: 14px;
 }
 
+.order-lines {
+  display: grid;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.order-line {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+}
+
+.order-line__name {
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.order-line__meta {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+.order-line__price {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.55;
+  color: var(--text);
+}
+
 .admin-actions__row {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+}
+
+.admin-action-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 16px;
+  border: 0;
+  border-radius: 18px;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.35;
+  text-align: center;
+  transition:
+    transform 0.18s ease,
+    background-color 0.18s ease,
+    opacity 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.admin-action-button--emphasis {
+  background: linear-gradient(135deg, var(--primary), var(--primary-strong));
+  color: #fff;
+  box-shadow: 0 14px 28px rgba(111, 47, 13, 0.22);
+}
+
+.admin-action-button--muted {
+  background: var(--surface-strong);
+  color: var(--text-muted);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.admin-action-button:disabled {
+  cursor: default;
+  transform: none;
+}
+
+.admin-action-button--muted:disabled {
+  opacity: 0.72;
+}
+
+.admin-action-button--emphasis:disabled {
+  opacity: 0.54;
 }
 
 .inline-note {
@@ -501,6 +582,10 @@ button {
 
   .offer-row,
   .order-item-row {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-actions__row {
     grid-template-columns: 1fr;
   }
 
