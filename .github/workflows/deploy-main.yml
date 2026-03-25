@@ -1,0 +1,66 @@
+name: Deploy Main
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-main
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+      DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+      DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
+      DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+      DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+    steps:
+      - name: Validate deployment secrets
+        run: |
+          set -eu
+
+          required_vars="
+          DEPLOY_HOST
+          DEPLOY_KNOWN_HOSTS
+          DEPLOY_PATH
+          DEPLOY_SSH_KEY
+          DEPLOY_USER
+          "
+
+          for var_name in $required_vars; do
+            eval "var_value=\${$var_name:-}"
+            if [ -z "$var_value" ]; then
+              echo "::error::$var_name secret is required"
+              exit 1
+            fi
+          done
+      - name: Configure SSH
+        run: |
+          set -eu
+
+          mkdir -p "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_SSH_KEY" > "$HOME/.ssh/id_ed25519"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/id_ed25519"
+          chmod 644 "$HOME/.ssh/known_hosts"
+      - name: Deploy on server
+        run: |
+          set -eu
+
+          deploy_port="${DEPLOY_PORT:-22}"
+
+          ssh -i "$HOME/.ssh/id_ed25519" -o BatchMode=yes -p "$deploy_port" "$DEPLOY_USER@$DEPLOY_HOST" <<EOF
+          set -eu
+          cd "$DEPLOY_PATH"
+          git fetch origin main
+          git checkout main
+          git pull --ff-only origin main
+          docker compose up -d --build
+          docker compose ps
+          EOF

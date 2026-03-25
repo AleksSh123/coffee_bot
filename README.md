@@ -147,3 +147,36 @@ docker compose up --build -d
 ```
 
 При запуске через `docker compose` основной лог сохраняется на хосте в `/var/log/coffee-bot/app.log`, Telegram message log сохраняется в `/var/log/coffee-bot/telegram-messages.log`, если `LOG_TELEGRAM_MESSAGES=true`, PostgreSQL поднимается автоматически, а Mini App backend вместе со статическим frontend доступны по адресу `http://localhost:3000/miniapp`.
+
+## Автодеплой через GitHub Actions
+
+В репозитории есть workflow [`.github/workflows/deploy-main.yml`](/Users/alex/Documents/DEVELOPMENT/Git-Projects/coffee_bot/.github/workflows/deploy-main.yml), который запускается при каждом `push` в ветку `main` и по `workflow_dispatch`.
+Workflow подключается к серверу по SSH, делает `git pull --ff-only origin main` в каталоге проекта и затем выполняет:
+
+```bash
+docker compose up -d --build
+```
+
+Чтобы он работал, на сервере должно быть уже подготовлено:
+
+- клонированный репозиторий в отдельную директорию, например `/opt/coffee_bot`
+- настроенный `.env` рядом с `compose.yaml`
+- установленные `git`, `docker` и `docker compose`
+- пользователь, от имени которого можно запускать `docker compose`
+
+В GitHub repository secrets нужно добавить:
+
+- `DEPLOY_HOST` - hostname или IP сервера
+- `DEPLOY_PORT` - SSH-порт, если не `22`
+- `DEPLOY_USER` - SSH-пользователь
+- `DEPLOY_PATH` - абсолютный путь к каталогу проекта на сервере
+- `DEPLOY_SSH_KEY` - приватный SSH-ключ, которым GitHub Actions будет входить на сервер
+- `DEPLOY_KNOWN_HOSTS` - содержимое `known_hosts` для сервера
+
+`DEPLOY_KNOWN_HOSTS` удобно получить так:
+
+```bash
+ssh-keyscan -p 22 your-server.example.com
+```
+
+Если SSH-порт не `22`, подставь свой порт и сохрани вывод целиком в secret.
