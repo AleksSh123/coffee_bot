@@ -146,6 +146,7 @@ function serializeCatalog(snapshot, catalogService) {
   return {
     refreshedAt:
       snapshot.lastRefreshedAt > 0 ? new Date(snapshot.lastRefreshedAt).toISOString() : null,
+    currentOrderContext: snapshot.orderContext ?? null,
     pricesValidText: snapshot.pricesValidText ?? null,
     categories: nonEmptyCategories,
     categoryTree: catalogService.getCategoryTree().map(serializeCategoryNode),
@@ -155,9 +156,7 @@ function serializeCatalog(snapshot, catalogService) {
 
 function parseOrderFilters(url) {
   return {
-    lifecycleStatus: url.searchParams.get("lifecycle_status") ?? null,
-    paymentStatus: url.searchParams.get("payment_status") ?? null,
-    fulfillmentStatus: url.searchParams.get("fulfillment_status") ?? null
+    orderContextStatus: url.searchParams.get("order_context_status") ?? null
   };
 }
 
@@ -362,6 +361,23 @@ export function createApiServer({
         );
         sendJson(response, 200, {
           order
+        });
+        return;
+      }
+
+      const adminOrderContextStatusParams = isPathMatch(
+        url.pathname,
+        "/api/admin/order-contexts/:orderContextKey/status"
+      );
+
+      if (request.method === "PATCH" && adminOrderContextStatusParams) {
+        const body = await readJsonBody(request);
+        const orderContext = await orderService.updateAdminOrderContextStatus(
+          adminOrderContextStatusParams.orderContextKey,
+          body
+        );
+        sendJson(response, 200, {
+          orderContext
         });
         return;
       }

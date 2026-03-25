@@ -13,6 +13,7 @@ export function createStore() {
       categoriesById: new Map(),
       categoryRoots: [],
       categoryNodesById: new Map(),
+      orderContext: null,
       pricesValidText: null,
       lastRefreshedAt: 0
     },

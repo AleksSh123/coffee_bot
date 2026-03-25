@@ -1,6 +1,7 @@
 import { buildCategoryTree } from "../catalog/category-tree.js";
 import { buildCatalogMessagesWithTitle } from "../catalog/formatters.js";
 import { defaultCatalogTitle } from "../config/constants.js";
+import { buildOrderContext } from "../orders/context.js";
 
 function getResponseItems(response) {
   if (Array.isArray(response?.data)) {
@@ -98,6 +99,7 @@ export function createCatalogService({ state, config, authService, fetchJson, lo
       fetchCategories(),
       fetchCatalog()
     ]);
+    const orderContext = buildOrderContext(pricesValidText);
     const { roots: categoryRoots, nodesById: categoryNodesById } = buildCategoryTree(
       categoriesById,
       items
@@ -110,6 +112,7 @@ export function createCatalogService({ state, config, authService, fetchJson, lo
       categoryRoots,
       categoryNodesById,
       messages: buildCatalogMessagesWithTitle(items, defaultCatalogTitle, categoriesById),
+      orderContext,
       pricesValidText,
       lastRefreshedAt
     };
@@ -117,6 +120,8 @@ export function createCatalogService({ state, config, authService, fetchJson, lo
     logger.info("catalog.sync.success", {
       items_count: items.length,
       categories_count: categoriesById.size,
+      order_context_key: orderContext.key,
+      order_context_label: orderContext.label,
       refreshed_at: new Date(lastRefreshedAt).toISOString(),
       duration_ms: lastRefreshedAt - startedAt
     });

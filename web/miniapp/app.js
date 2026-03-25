@@ -1,13 +1,12 @@
 const state = {
   activeTab: "catalog",
   adminFilters: {
-    lifecycleStatus: null,
-    paymentStatus: null,
-    fulfillmentStatus: null
+    orderContextStatus: null
   },
   authToken: null,
   catalog: null,
   categoryPath: [],
+  collapsedAdminOrderContexts: new Set(),
   draftOrder: null,
   isBusy: false,
   isTelegramContext: false,
@@ -165,6 +164,174 @@ function formatOrderItemPricing(item) {
   return `Количество: ${item.quantity} · Цена: ${formatPrice(item.price)}/шт`;
 }
 
+function getCurrentOrderContextLabel() {
+  const label = state.catalog?.currentOrderContext?.label ?? state.catalog?.pricesValidText ?? null;
+  return typeof label === "string" && label.trim() ? label.trim() : null;
+}
+
+function formatOrderContextText(label) {
+  const normalizedLabel = typeof label === "string" ? label.trim() : "";
+  return normalizedLabel ? `Заказ: ${normalizedLabel}` : "Заказ: без контекста";
+}
+
+function buildOrderContextBanner(label) {
+  if (!label) {
+    return "";
+  }
+
+  return `<div class="context-banner">${escapeHtml(formatOrderContextText(label))}</div>`;
+}
+
+function capitalizeFirst(value) {
+  return value ? value[0].toUpperCase() + value.slice(1) : value;
+}
+
+function buildOrderContextSeed(value) {
+  const seed = [17, 43, 89, 131];
+
+  for (let index = 0; index < value.length; index += 1) {
+    const position = index % seed.length;
+    seed[position] = (seed[position] * 31 + value.charCodeAt(index)) % 256;
+  }
+
+  return seed;
+}
+
+function formatOrderContextId(orderContextKey) {
+  const normalizedKey = typeof orderContextKey === "string" ? orderContextKey.trim() : "";
+  const syllables = [
+    "ta",
+    "te",
+    "ti",
+    "to",
+    "tu",
+    "ka",
+    "ke",
+    "ki",
+    "ko",
+    "ku",
+    "ra",
+    "re",
+    "ri",
+    "ro",
+    "ru",
+    "sa",
+    "se",
+    "si",
+    "so",
+    "su",
+    "ma",
+    "me",
+    "mi",
+    "mo",
+    "mu",
+    "la",
+    "le",
+    "li",
+    "lo",
+    "lu",
+    "va",
+    "ve",
+    "vi",
+    "vo",
+    "vu",
+    "na",
+    "ne",
+    "ni",
+    "no",
+    "nu",
+    "fa",
+    "fe",
+    "fi",
+    "fo",
+    "fu"
+  ];
+
+  const seed = buildOrderContextSeed(normalizedKey || "legacy");
+  const word = capitalizeFirst(
+    `${syllables[seed[0] % syllables.length]}${syllables[seed[1] % syllables.length]}${syllables[seed[2] % syllables.length]}`
+  );
+  const suffix = seed[3].toString(16).padStart(2, "0").toUpperCase();
+
+  return `${word}-${suffix}`;
+}
+
+function getOrderContextStatusLabel(status) {
+  const labels = {
+    open: "открыт",
+    sent: "отправлен",
+    closed: "закрыт"
+  };
+
+  return labels[status] ?? status ?? "не указан";
+}
+
+function getLifecycleStatusLabel(status) {
+  const labels = {
+    draft: "черновик",
+    submitted: "отправлена",
+    cancelled: "отменена"
+  };
+
+  return labels[status] ?? status ?? "не указан";
+}
+
+function getPaymentStatusLabel(status) {
+  const labels = {
+    paid: "оплаченный",
+    unpaid: "неоплаченный"
+  };
+
+  return labels[status] ?? status ?? "не указан";
+}
+
+function getFulfillmentStatusLabel(status) {
+  const labels = {
+    fulfilled: "исполненный",
+    pending: "неисполненный"
+  };
+
+  return labels[status] ?? status ?? "не указан";
+}
+
+function groupAdminOrdersByContext(orders) {
+  const groups = [];
+  const groupsByKey = new Map();
+
+  for (const order of orders) {
+    const groupKey = typeof order.orderContextKey === "string" && order.orderContextKey.trim()
+      ? order.orderContextKey.trim()
+      : "legacy";
+    const orderAmount = Number(order.totals?.totalAmount ?? 0);
+    const existingGroup = groupsByKey.get(groupKey);
+
+    if (existingGroup) {
+      existingGroup.orders.push(order);
+      existingGroup.totalAmount = Number(
+        (existingGroup.totalAmount + orderAmount).toFixed(2)
+      );
+      if (order.paymentStatus === "paid") {
+        existingGroup.paidAmount = Number((existingGroup.paidAmount + orderAmount).toFixed(2));
+      }
+      continue;
+    }
+
+    const nextGroup = {
+      key: groupKey,
+      label: order.orderContextLabel ?? "Архивный заказ",
+      status: order.orderContextStatus ?? "open",
+      paidAmount: order.paymentStatus === "paid" ? orderAmount : 0,
+      totalAmount: orderAmount,
+      orders: [order]
+    };
+
+    groupsByKey.set(groupKey, nextGroup);
+    groups.push(nextGroup);
+  }
+
+  return groups;
+}
+
 function getOrderItemByOfferKey(offerKey) {
   return state.draftOrder?.items?.find((item) => item.offerKey === offerKey) ?? null;
 }
@@ -244,15 +411,15 @@ function renderUserSummary() {
     return;
   }
 
+  const currentOrderContextLabel = getCurrentOrderContextLabel();
+
   const chips = [
     `<span class="hero__meta-chip">${escapeHtml(getDisplayName(state.user))}</span>`,
     `<span class="hero__meta-chip">${state.user.isAdmin ? "Роль: админ" : "Роль: пользователь"}</span>`
   ];
 
-  if (state.catalog?.pricesValidText) {
-    chips.push(
-      `<span class="hero__meta-chip">${escapeHtml(state.catalog.pricesValidText)}</span>`
-    );
+  if (currentOrderContextLabel) {
+    chips.push(`<span class="hero__meta-chip">${escapeHtml(formatOrderContextText(currentOrderContextLabel))}</span>`);
   }
 
   elements.userSummary.innerHTML = chips.join("");
@@ -458,17 +625,22 @@ function renderDraft() {
   }
 
   const draftOrder = state.draftOrder;
+  const currentOrderContextLabel = getCurrentOrderContextLabel();
+  const contextBanner = buildOrderContextBanner(currentOrderContextLabel);
 
   if (!draftOrder || draftOrder.items.length === 0) {
     elements.draftList.innerHTML =
+      contextBanner +
       '<div class="empty-state">Заявка пока пустая. Добавьте позиции из каталога.</div>';
     elements.draftTotal.textContent = "0 позиций";
     return;
   }
 
-  elements.draftList.innerHTML = draftOrder.items
-    .map(
-      (item) => `
+  elements.draftList.innerHTML =
+    contextBanner +
+    draftOrder.items
+      .map(
+        (item) => `
         <article class="draft-card">
           <div class="draft-card__header">
             <div>
@@ -498,8 +670,8 @@ function renderDraft() {
           </div>
         </article>
       `
-    )
-    .join("");
+      )
+      .join("");
 
   elements.draftTotal.textContent = `${draftOrder.totals.totalQuantity} шт. · ${formatPrice(
     draftOrder.totals.totalAmount
@@ -530,18 +702,19 @@ function renderOrders() {
               <div class="card-subtitle">${escapeHtml(
                 order.submittedAt ?? order.createdAt ?? "время не указано"
               )}</div>
+              <div class="card-context">${escapeHtml(formatOrderContextText(order.orderContextLabel))}</div>
             </div>
             <div class="history-card__total">${escapeHtml(formatPrice(order.totals.totalAmount))}</div>
           </div>
           <div class="history-meta">
             <span class="status-chip status-chip--${escapeHtml(order.lifecycleStatus)}">${escapeHtml(
-              order.lifecycleStatus
+              getLifecycleStatusLabel(order.lifecycleStatus)
             )}</span>
             <span class="status-chip status-chip--${escapeHtml(order.paymentStatus)}">${escapeHtml(
-              order.paymentStatus
+              getPaymentStatusLabel(order.paymentStatus)
             )}</span>
             <span class="status-chip status-chip--${escapeHtml(order.fulfillmentStatus)}">${escapeHtml(
-              order.fulfillmentStatus
+              getFulfillmentStatusLabel(order.fulfillmentStatus)
             )}</span>
           </div>
           <div class="order-lines">
@@ -565,10 +738,10 @@ function renderOrders() {
 
 function renderAdminFilters() {
   const options = [
-    { key: "lifecycleStatus", value: null, label: "Все" },
-    { key: "lifecycleStatus", value: "submitted", label: "Только submitted" },
-    { key: "paymentStatus", value: "unpaid", label: "Не оплачены" },
-    { key: "fulfillmentStatus", value: "pending", label: "Не исполнены" }
+    { key: "orderContextStatus", value: null, label: "Все" },
+    { key: "orderContextStatus", value: "open", label: "Открытые" },
+    { key: "orderContextStatus", value: "sent", label: "Отправленные" },
+    { key: "orderContextStatus", value: "closed", label: "Закрытые" }
   ];
 
   elements.adminFilters.innerHTML = options
@@ -579,7 +752,7 @@ function renderAdminFilters() {
     .join("");
 }
 
-function buildAdminActionButton(order, field, activeValue, nextValue, label) {
+function buildAdminActionButton(order, field, nextValue, label) {
   const currentValue = order[field];
   const isCurrentState = currentValue === nextValue;
   const isDisabled = order.lifecycleStatus !== "submitted" || isCurrentState;
@@ -589,6 +762,15 @@ function buildAdminActionButton(order, field, activeValue, nextValue, label) {
     : "admin-action-button--muted";
 
   return `<button class="admin-action-button ${stateClass}" type="button" data-action="admin-update-status" data-order-id="${order.id}" data-status-field="${field}" data-status-value="${nextValue}" ${isDisabled ? "disabled" : ""}>${escapeHtml(label)}</button>`;
+}
+
+function buildOrderContextStatusButton(group, nextStatus, label) {
+  const isCurrentState = group.status === nextStatus;
+  const stateClass = isCurrentState
+    ? "admin-action-button--muted"
+    : "admin-action-button--emphasis";
+
+  return `<button class="admin-action-button ${stateClass}" type="button" data-action="admin-update-order-context-status" data-order-context-key="${escapeHtml(group.key)}" data-order-context-status="${escapeHtml(nextStatus)}" ${isCurrentState ? "disabled" : ""}>${escapeHtml(label)}</button>`;
 }
 
 function renderAdminOrders() {
@@ -608,47 +790,88 @@ function renderAdminOrders() {
     return;
   }
 
-  elements.adminOrdersList.innerHTML = state.adminOrders
+  elements.adminOrdersList.innerHTML = groupAdminOrdersByContext(state.adminOrders)
     .map(
-      (order) => `
-        <article class="admin-card">
-          <div class="admin-card__header">
-            <div>
-              <h3 class="admin-card__title">Заявка #${order.id}</h3>
-              <div class="card-subtitle">${escapeHtml(order.user ? getDisplayName(order.user) : "Пользователь неизвестен")}</div>
+      (group) => {
+        const isCollapsed = state.collapsedAdminOrderContexts.has(group.key);
+
+        return `
+        <section class="admin-order-group">
+          <article class="admin-order-group__summary">
+            <div class="admin-order-group__header">
+              <div>
+                <h3 class="admin-order-group__title">Заказ ${escapeHtml(formatOrderContextId(group.key))}</h3>
+                <div class="card-subtitle">${escapeHtml(formatOrderContextText(group.label))}</div>
+                <div class="admin-order-group__meta">
+                  <span class="status-chip status-chip--order-context">${escapeHtml(getOrderContextStatusLabel(group.status))}</span>
+                  <span class="hero__meta-chip">${group.orders.length} заявок</span>
+                </div>
+              </div>
+              <div class="admin-order-group__summary-side">
+                <div class="admin-order-group__total">${escapeHtml(formatPrice(group.totalAmount))}</div>
+                <div class="admin-order-group__payment-summary">Оплачено ${escapeHtml(formatPrice(group.paidAmount))} из ${escapeHtml(formatPrice(group.totalAmount))}</div>
+              </div>
             </div>
-            <div class="admin-card__total">${escapeHtml(formatPrice(order.totals.totalAmount))}</div>
-          </div>
-          <div class="admin-meta">
-            <span class="status-chip status-chip--${escapeHtml(order.lifecycleStatus)}">${escapeHtml(order.lifecycleStatus)}</span>
-            <span class="status-chip status-chip--${escapeHtml(order.paymentStatus)}">${escapeHtml(order.paymentStatus)}</span>
-            <span class="status-chip status-chip--${escapeHtml(order.fulfillmentStatus)}">${escapeHtml(order.fulfillmentStatus)}</span>
-          </div>
-          <div class="admin-order-items order-lines">
-            ${order.items
+            <div class="admin-order-group__actions">
+              <div class="admin-actions__row admin-actions__row--triple">
+                ${buildOrderContextStatusButton(group, "open", "Открыт")}
+                ${buildOrderContextStatusButton(group, "sent", "Отправлен")}
+                ${buildOrderContextStatusButton(group, "closed", "Закрыт")}
+              </div>
+              <button class="ghost-button admin-order-group__toggle" type="button" data-action="toggle-order-context" data-order-context-key="${escapeHtml(group.key)}">
+                ${isCollapsed ? "Развернуть" : "Свернуть"}
+              </button>
+            </div>
+          </article>
+          <div class="admin-order-group__orders ${isCollapsed ? "is-hidden" : ""}">
+            ${group.orders
               .map(
-                (item) => `
-                  <div class="order-line">
-                    <div class="order-line__name">${escapeHtml(item.productName)}</div>
-                    <div class="order-line__meta">${escapeHtml(formatOrderItemVariant(item))}</div>
-                    <div class="order-line__price">${escapeHtml(formatOrderItemPricing(item))}</div>
-                  </div>
+                (order) => `
+                  <article class="admin-card">
+                    <div class="admin-card__header">
+                      <div>
+                        <h3 class="admin-card__title">Заявка #${order.id}</h3>
+                        <div class="card-subtitle">${escapeHtml(order.user ? getDisplayName(order.user) : "Пользователь неизвестен")}</div>
+                        <div class="card-context">${escapeHtml(formatOrderContextText(order.orderContextLabel))}</div>
+                      </div>
+                      <div class="admin-card__total">${escapeHtml(formatPrice(order.totals.totalAmount))}</div>
+                    </div>
+                    <div class="admin-meta">
+                      <span class="status-chip status-chip--${escapeHtml(order.lifecycleStatus)}">${escapeHtml(getLifecycleStatusLabel(order.lifecycleStatus))}</span>
+                      <span class="status-chip status-chip--${escapeHtml(order.paymentStatus)}">${escapeHtml(getPaymentStatusLabel(order.paymentStatus))}</span>
+                      <span class="status-chip status-chip--${escapeHtml(order.fulfillmentStatus)}">${escapeHtml(getFulfillmentStatusLabel(order.fulfillmentStatus))}</span>
+                    </div>
+                    <div class="admin-order-items order-lines">
+                      ${order.items
+                        .map(
+                          (item) => `
+                            <div class="order-line">
+                              <div class="order-line__name">${escapeHtml(item.productName)}</div>
+                              <div class="order-line__meta">${escapeHtml(formatOrderItemVariant(item))}</div>
+                              <div class="order-line__price">${escapeHtml(formatOrderItemPricing(item))}</div>
+                            </div>
+                          `
+                        )
+                        .join("")}
+                    </div>
+                    <div class="admin-actions">
+                      <div class="admin-actions__row">
+                        ${buildAdminActionButton(order, "paymentStatus", "paid", "Отметить как оплаченный")}
+                        ${buildAdminActionButton(order, "paymentStatus", "unpaid", "Вернуть в неоплаченный")}
+                      </div>
+                      <div class="admin-actions__row">
+                        ${buildAdminActionButton(order, "fulfillmentStatus", "fulfilled", "Отметить как исполненный")}
+                        ${buildAdminActionButton(order, "fulfillmentStatus", "pending", "Вернуть в неисполненный")}
+                      </div>
+                    </div>
+                  </article>
                 `
               )
               .join("")}
           </div>
-          <div class="admin-actions">
-            <div class="admin-actions__row">
-              ${buildAdminActionButton(order, "paymentStatus", "paid", "paid", "Отметить как оплаченный")}
-              ${buildAdminActionButton(order, "paymentStatus", "unpaid", "unpaid", "Вернуть в unpaid")}
-            </div>
-            <div class="admin-actions__row">
-              ${buildAdminActionButton(order, "fulfillmentStatus", "fulfilled", "fulfilled", "Отметить как исполненный")}
-              ${buildAdminActionButton(order, "fulfillmentStatus", "pending", "pending", "Вернуть в pending")}
-            </div>
-          </div>
-        </article>
-      `
+        </section>
+      `;
+      }
     )
     .join("");
 }
@@ -710,16 +933,8 @@ async function refreshAdminOrders() {
 
   const params = new URLSearchParams();
 
-  if (state.adminFilters.lifecycleStatus) {
-    params.set("lifecycle_status", state.adminFilters.lifecycleStatus);
-  }
-
-  if (state.adminFilters.paymentStatus) {
-    params.set("payment_status", state.adminFilters.paymentStatus);
-  }
-
-  if (state.adminFilters.fulfillmentStatus) {
-    params.set("fulfillment_status", state.adminFilters.fulfillmentStatus);
+  if (state.adminFilters.orderContextStatus) {
+    params.set("order_context_status", state.adminFilters.orderContextStatus);
   }
 
   const path = `/api/admin/orders${params.toString() ? `?${params.toString()}` : ""}`;
@@ -864,6 +1079,19 @@ async function updateAdminOrderStatus(orderId, field, value) {
   setStatus("Статус заявки обновлён.", "success");
 }
 
+async function updateAdminOrderContextStatus(orderContextKey, status) {
+  setStatus("Обновляю статус заказа...", "neutral");
+  await apiRequest(`/api/admin/order-contexts/${encodeURIComponent(orderContextKey)}/status`, {
+    method: "PATCH",
+    body: {
+      status
+    }
+  });
+  await refreshAdminOrders();
+  renderAdminOrders();
+  setStatus("Статус заказа обновлён.", "success");
+}
+
 function nudgeNumericInput(input, delta) {
   const currentValue = Number.parseInt(input.value ?? "1", 10);
   const nextValue = Number.isInteger(currentValue) ? currentValue + delta : 1;
@@ -974,9 +1202,7 @@ function attachEvents() {
     }
 
     state.adminFilters = {
-      lifecycleStatus: null,
-      paymentStatus: null,
-      fulfillmentStatus: null,
+      orderContextStatus: null,
       [button.dataset.adminFilterKey]: button.dataset.adminFilterValue || null
     };
 
@@ -990,18 +1216,45 @@ function attachEvents() {
   });
 
   elements.adminOrdersList.addEventListener("click", async (event) => {
-    const button = event.target.closest('[data-action="admin-update-status"]');
+    const button = event.target.closest("[data-action]");
 
     if (!button) {
       return;
     }
 
     try {
-      await updateAdminOrderStatus(
-        button.dataset.orderId,
-        button.dataset.statusField,
-        button.dataset.statusValue
-      );
+      if (button.dataset.action === "toggle-order-context") {
+        const orderContextKey = button.dataset.orderContextKey;
+
+        if (!orderContextKey) {
+          return;
+        }
+
+        if (state.collapsedAdminOrderContexts.has(orderContextKey)) {
+          state.collapsedAdminOrderContexts.delete(orderContextKey);
+        } else {
+          state.collapsedAdminOrderContexts.add(orderContextKey);
+        }
+
+        renderAdminOrders();
+        return;
+      }
+
+      if (button.dataset.action === "admin-update-order-context-status") {
+        await updateAdminOrderContextStatus(
+          button.dataset.orderContextKey,
+          button.dataset.orderContextStatus
+        );
+        return;
+      }
+
+      if (button.dataset.action === "admin-update-status") {
+        await updateAdminOrderStatus(
+          button.dataset.orderId,
+          button.dataset.statusField,
+          button.dataset.statusValue
+        );
+      }
     } catch (error) {
       setStatus(error.message, "error");
     }

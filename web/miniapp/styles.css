@@ -286,6 +286,112 @@ button {
   gap: 14px;
 }
 
+.admin-order-group {
+  display: grid;
+  gap: 12px;
+}
+
+.admin-order-group__summary {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(244, 230, 216, 0.1);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  color: #f4e6d8;
+  background: #402217;
+  box-shadow:
+    0 22px 48px rgba(28, 14, 8, 0.26),
+    inset 0 1px 0 rgba(255, 245, 235, 0.04);
+}
+
+.admin-order-group__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.admin-order-group__summary-side {
+  display: grid;
+  justify-items: end;
+  gap: 6px;
+  text-align: right;
+}
+
+.admin-order-group__title {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 800;
+  color: #fff7ef;
+}
+
+.admin-order-group__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.admin-order-group__total {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  font-weight: 800;
+  color: #ffe1bf;
+}
+
+.admin-order-group__payment-summary {
+  color: rgba(244, 230, 216, 0.78);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.admin-order-group__actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.admin-order-group__toggle {
+  justify-self: flex-start;
+}
+
+.admin-order-group__orders {
+  display: grid;
+  gap: 12px;
+  padding-left: 14px;
+  border-left: 2px solid var(--line);
+}
+
+.admin-order-group__summary .card-subtitle {
+  color: rgba(244, 230, 216, 0.82);
+}
+
+.admin-order-group__summary .hero__meta-chip,
+.admin-order-group__summary .status-chip--order-context {
+  border-color: rgba(244, 230, 216, 0.12);
+  background: rgba(255, 247, 239, 0.1);
+  color: #fff7ef;
+}
+
+.admin-order-group__summary .ghost-button {
+  background: rgba(255, 247, 239, 0.12);
+  color: #fff7ef;
+  box-shadow: inset 0 0 0 1px rgba(244, 230, 216, 0.14);
+}
+
+.admin-order-group__summary .admin-action-button--emphasis {
+  background: #d29568;
+  color: #2e180f;
+  box-shadow: 0 14px 28px rgba(34, 17, 9, 0.24);
+}
+
+.admin-order-group__summary .admin-action-button--muted {
+  background: rgba(255, 247, 239, 0.1);
+  color: #f4e6d8;
+  box-shadow: inset 0 0 0 1px rgba(244, 230, 216, 0.14);
+}
+
 .catalog-card,
 .draft-card,
 .history-card,
@@ -318,6 +424,14 @@ button {
   margin-top: 6px;
   color: var(--text-muted);
   font-size: 13px;
+  line-height: 1.5;
+}
+
+.card-context {
+  margin-top: 8px;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
   line-height: 1.5;
 }
 
@@ -424,6 +538,18 @@ button {
   margin-top: 14px;
 }
 
+.context-banner {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--surface-strong);
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
 .empty-state {
   padding: 18px;
   border: 1px dashed var(--line-strong);
@@ -462,6 +588,11 @@ button {
 .status-chip--cancelled {
   color: var(--danger);
   background: rgba(163, 58, 45, 0.12);
+}
+
+.status-chip--order-context {
+  color: var(--primary);
+  background: rgba(139, 61, 20, 0.12);
 }
 
 .admin-actions,
@@ -511,6 +642,10 @@ button {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+}
+
+.admin-actions__row--triple {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .admin-action-button {
@@ -582,6 +717,24 @@ button {
 
   .offer-row,
   .order-item-row {
+    grid-template-columns: 1fr;
+  }
+
+  .admin-order-group__header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .admin-order-group__summary-side {
+    justify-items: start;
+    text-align: left;
+  }
+
+  .admin-order-group__orders {
+    padding-left: 10px;
+  }
+
+  .admin-actions__row--triple {
     grid-template-columns: 1fr;
   }
 

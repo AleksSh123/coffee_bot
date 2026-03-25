@@ -1,5 +1,6 @@
 import { getCatalogOfferKey } from "../catalog/offer-key.js";
 import { createHttpError } from "../lib/http-error.js";
+import { buildOrderContext } from "../orders/context.js";
 
 function normalizeNullableString(value) {
   const normalized = typeof value === "string" ? value.trim() : "";
@@ -71,6 +72,9 @@ function buildOrderTotals(items) {
 function mapOrderRow(row, items, user = null) {
   return {
     id: Number(row.id),
+    orderContextKey: row.order_context_key,
+    orderContextLabel: row.order_context_label,
+    orderContextStatus: row.order_context_status ?? "open",
     lifecycleStatus: row.lifecycle_status,
     paymentStatus: row.payment_status,
     fulfillmentStatus: row.fulfillment_status,
@@ -97,6 +101,10 @@ function buildCatalogIndex(snapshot) {
     itemsById,
     categoriesById: snapshot.categoriesById
   };
+}
+
+function getCatalogOrderContext(snapshot) {
+  return snapshot?.orderContext ?? buildOrderContext(snapshot?.pricesValidText);
 }
 
 function findCatalogOffer(item, offerKey) {
@@ -183,32 +191,49 @@ export function createOrderService({ db, catalogService, logger }) {
     };
   }
 
-  async function loadDraftOrder(executor, userId) {
+  async function loadDraftOrder(executor, userId, orderContextKey) {
     const { rows } = await executor.query(
       `
         SELECT *
         FROM orders
-        WHERE user_id = $1 AND lifecycle_status = 'draft'
+        WHERE user_id = $1 AND lifecycle_status = 'draft' AND order_context_key = $2
         ORDER BY id DESC
         LIMIT 1
       `,
-      [userId]
+      [userId, orderContextKey]
     );
 
     return rows[0] ?? null;
   }
 
-  async function ensureDraftOrder(executor, userId) {
-    await executor.query(
+  async function loadOrderContextStatus(executor, orderContextKey) {
+    const { rows } = await executor.query(
       `
-        INSERT INTO orders (user_id)
-        VALUES ($1)
-        ON CONFLICT DO NOTHING
+        SELECT order_context_status
+        FROM orders
+        WHERE order_context_key = $1
+        ORDER BY updated_at DESC, id DESC
+        LIMIT 1
       `,
-      [userId]
+      [orderContextKey]
     );
 
-    const draftOrder = await loadDraftOrder(executor, userId);
+    return rows[0]?.order_context_status ?? "open";
+  }
+
+  async function ensureDraftOrder(executor, userId, orderContext) {
+    const orderContextStatus = await loadOrderContextStatus(executor, orderContext.key);
+
+    await executor.query(
+      `
+        INSERT INTO orders (user_id, order_context_key, order_context_label, order_context_status)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT DO NOTHING
+      `,
+      [userId, orderContext.key, orderContext.label, orderContextStatus]
+    );
+
+    const draftOrder = await loadDraftOrder(executor, userId, orderContext.key);
 
     if (!draftOrder) {
       throw createHttpError(500, "Unable to create draft order", "order_draft_create_failed");
@@ -217,10 +242,17 @@ export function createOrderService({ db, catalogService, logger }) {
     return draftOrder;
   }
 
+  async function getCurrentOrderContext() {
+    const catalogSnapshot = await catalogService.getCatalogSnapshot();
+    return getCatalogOrderContext(catalogSnapshot);
+  }
+
   async function getDraftOrder(identity) {
+    const currentOrderContext = await getCurrentOrderContext();
+
     return db.transaction(async (executor) => {
       const user = await ensureTelegramUser(identity, executor);
-      const orderRow = await loadDraftOrder(executor, user.id);
+      const orderRow = await loadDraftOrder(executor, user.id, currentOrderContext.key);
 
       if (!orderRow) {
         return null;
@@ -246,6 +278,7 @@ export function createOrderService({ db, catalogService, logger }) {
     }
 
     const catalogSnapshot = await catalogService.getCatalogSnapshot();
+    const orderContext = getCatalogOrderContext(catalogSnapshot);
     const catalogIndex = buildCatalogIndex(catalogSnapshot);
     const item = catalogIndex.itemsById.get(productId);
 
@@ -270,7 +303,7 @@ export function createOrderService({ db, catalogService, logger }) {
 
     return db.transaction(async (executor) => {
       const user = await ensureTelegramUser(identity, executor);
-      const orderRow = await ensureDraftOrder(executor, user.id);
+      const orderRow = await ensureDraftOrder(executor, user.id, orderContext);
 
       await executor.query(
         `
@@ -321,7 +354,12 @@ export function createOrderService({ db, catalogService, logger }) {
         ]
       );
 
-      const freshOrderRow = await ensureDraftOrder(executor, user.id);
+      const freshOrderRow = await loadDraftOrder(executor, user.id, orderContext.key);
+
+      if (!freshOrderRow) {
+        throw createHttpError(500, "Draft order was not found after update", "order_draft_missing");
+      }
+
       const orderData = await loadOrderById(executor, freshOrderRow.id);
 
       return mapOrderRow(freshOrderRow, orderData.items);
@@ -331,10 +369,11 @@ export function createOrderService({ db, catalogService, logger }) {
   async function updateDraftOrderItem(identity, itemId, payload) {
     const normalizedItemId = normalizePositiveInteger(itemId, "itemId");
     const quantity = normalizePositiveInteger(payload.quantity, "quantity");
+    const currentOrderContext = await getCurrentOrderContext();
 
     return db.transaction(async (executor) => {
       const user = await ensureTelegramUser(identity, executor);
-      const orderRow = await loadDraftOrder(executor, user.id);
+      const orderRow = await loadDraftOrder(executor, user.id, currentOrderContext.key);
 
       if (!orderRow) {
         throw createHttpError(404, "Draft order was not found", "order_draft_not_found");
@@ -361,10 +400,11 @@ export function createOrderService({ db, catalogService, logger }) {
 
   async function removeDraftOrderItem(identity, itemId) {
     const normalizedItemId = normalizePositiveInteger(itemId, "itemId");
+    const currentOrderContext = await getCurrentOrderContext();
 
     return db.transaction(async (executor) => {
       const user = await ensureTelegramUser(identity, executor);
-      const orderRow = await loadDraftOrder(executor, user.id);
+      const orderRow = await loadDraftOrder(executor, user.id, currentOrderContext.key);
 
       if (!orderRow) {
         throw createHttpError(404, "Draft order was not found", "order_draft_not_found");
@@ -390,10 +430,11 @@ export function createOrderService({ db, catalogService, logger }) {
 
   async function submitDraftOrder(identity, payload = {}) {
     const comment = normalizeNullableString(payload.comment);
+    const currentOrderContext = await getCurrentOrderContext();
 
     return db.transaction(async (executor) => {
       const user = await ensureTelegramUser(identity, executor);
-      const orderRow = await loadDraftOrder(executor, user.id);
+      const orderRow = await loadDraftOrder(executor, user.id, currentOrderContext.key);
 
       if (!orderRow) {
         throw createHttpError(404, "Draft order was not found", "order_draft_not_found");
@@ -428,6 +469,8 @@ export function createOrderService({ db, catalogService, logger }) {
       logger.info("miniapp.order.submitted", {
         order_id: submittedOrder.id,
         telegram_user_id: user.telegramUserId,
+        order_context_key: submittedOrder.order_context_key,
+        order_context_label: submittedOrder.order_context_label,
         items_count: orderData.items.length
       });
 
@@ -482,21 +525,11 @@ export function createOrderService({ db, catalogService, logger }) {
     const whereClauses = [];
     const params = [];
 
-    if (filters.lifecycleStatus) {
-      params.push(filters.lifecycleStatus);
-      whereClauses.push(`o.lifecycle_status = $${params.length}`);
-    } else {
-      whereClauses.push(`o.lifecycle_status <> 'draft'`);
-    }
+    whereClauses.push(`o.lifecycle_status <> 'draft'`);
 
-    if (filters.paymentStatus) {
-      params.push(filters.paymentStatus);
-      whereClauses.push(`o.payment_status = $${params.length}`);
-    }
-
-    if (filters.fulfillmentStatus) {
-      params.push(filters.fulfillmentStatus);
-      whereClauses.push(`o.fulfillment_status = $${params.length}`);
+    if (filters.orderContextStatus) {
+      params.push(filters.orderContextStatus);
+      whereClauses.push(`o.order_context_status = $${params.length}`);
     }
 
     const whereSql = whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
@@ -665,6 +698,50 @@ export function createOrderService({ db, catalogService, logger }) {
     });
   }
 
+  async function updateAdminOrderContextStatus(orderContextKey, payload = {}) {
+    const normalizedOrderContextKey = String(orderContextKey ?? "").trim();
+    const nextStatus = String(payload.status ?? "").trim().toLowerCase();
+
+    if (!normalizedOrderContextKey) {
+      throw createHttpError(400, "orderContextKey is required", "validation_error");
+    }
+
+    if (!["open", "sent", "closed"].includes(nextStatus)) {
+      throw createHttpError(400, "status is invalid", "validation_error");
+    }
+
+    return db.transaction(async (executor) => {
+      const { rows } = await executor.query(
+        `
+          UPDATE orders
+          SET
+            order_context_status = $1,
+            updated_at = NOW()
+          WHERE order_context_key = $2
+          RETURNING *
+        `,
+        [nextStatus, normalizedOrderContextKey]
+      );
+
+      if (rows.length === 0) {
+        throw createHttpError(404, "Order context was not found", "order_context_not_found");
+      }
+
+      logger.info("miniapp.order_context.status.updated", {
+        order_context_key: normalizedOrderContextKey,
+        order_context_status: nextStatus,
+        affected_orders_count: rows.length
+      });
+
+      return {
+        key: normalizedOrderContextKey,
+        label: rows[0].order_context_label,
+        status: nextStatus,
+        ordersCount: rows.length
+      };
+    });
+  }
+
   return {
     addDraftOrderItem,
     ensureTelegramUser,
@@ -675,6 +752,7 @@ export function createOrderService({ db, catalogService, logger }) {
     listOwnOrders,
     removeDraftOrderItem,
     submitDraftOrder,
+    updateAdminOrderContextStatus,
     updateAdminOrderStatuses,
     updateDraftOrderItem,
     upsertTelegramUser
