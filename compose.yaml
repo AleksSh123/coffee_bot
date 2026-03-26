@@ -24,11 +24,10 @@ services:
     labels:
       - traefik.enable=true
       - traefik.docker.network=traefik-public
-      - traefik.http.routers.miniapp.rule=Host(`dragonzzz.ru`) && PathPrefix(`/miniapp`)
+      - traefik.http.routers.coffee-bot.rule=Host(`miniapp.dragonzzz.ru`)
       - traefik.http.routers.miniapp.entrypoints=web,websecure
       - traefik.http.routers.miniapp.tls=true
       - traefik.http.routers.miniapp.tls.certresolver=mytlschallenge
-      - traefik.http.routers.miniapp.priority=100
       - traefik.http.services.miniapp.loadbalancer.server.port=3000
   db:
     image: postgres:16-alpine
