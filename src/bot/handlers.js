@@ -84,8 +84,7 @@ export function createBotHandlers({
           buttonLabels: navigation.availableNodes.map((categoryNode) => categoryNode.name),
           controlLabels: navigation.controlLabels
         };
-      })(),
-      includeMiniAppButton: hasMiniAppEntry()
+      })()
     };
   }
 

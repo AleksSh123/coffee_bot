@@ -2,8 +2,7 @@ import {
   catalogCategoriesSectionLabel,
   catalogUpdatedAtButtonLabel,
   microlotOfWeekButtonLabel,
-  miniAppButtonLabel,
-  priceButtonLabel,
+  promotionalSortButtonLabel,
   promotionsButtonLabel,
   sortOfMonthButtonLabel,
   sortOfWeekButtonLabel
@@ -23,7 +22,7 @@ function buildKeyboardRows(buttonLabels, itemsPerRow = 2) {
   return rows;
 }
 
-function buildKeyboard(categoryNavigation = null, includeMiniAppButton = false) {
+function buildKeyboard(categoryNavigation = null) {
   const categoryRows =
     categoryNavigation && Array.isArray(categoryNavigation.buttonLabels)
       ? [
@@ -36,14 +35,12 @@ function buildKeyboard(categoryNavigation = null, includeMiniAppButton = false) 
           ...((categoryNavigation.controlLabels ?? []).map((label) => [{ text: label }]))
         ]
       : [];
-  const miniAppRows = includeMiniAppButton ? [[{ text: miniAppButtonLabel }]] : [];
 
   return {
     keyboard: [
-      [{ text: priceButtonLabel }, { text: promotionsButtonLabel }],
+      [{ text: promotionalSortButtonLabel }, { text: promotionsButtonLabel }],
       [{ text: sortOfWeekButtonLabel }, { text: sortOfMonthButtonLabel }],
       [{ text: microlotOfWeekButtonLabel }, { text: catalogUpdatedAtButtonLabel }],
-      ...miniAppRows,
       ...categoryRows
     ],
     resize_keyboard: true,
@@ -94,10 +91,7 @@ export function createTelegramClient({ apiBaseUrl, fetchJson, logger, messageLog
     if (options.replyMarkup) {
       payload.reply_markup = options.replyMarkup;
     } else if (options.includeKeyboard) {
-      payload.reply_markup = buildKeyboard(
-        options.categoryNavigation ?? null,
-        Boolean(options.includeMiniAppButton)
-      );
+      payload.reply_markup = buildKeyboard(options.categoryNavigation ?? null);
     }
 
     if (options.parseMode) {
