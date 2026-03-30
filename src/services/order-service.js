@@ -680,14 +680,6 @@ export function createOrderService({ db, catalogService, logger }) {
 
       const currentOrder = rows[0];
 
-      if (currentOrder.lifecycle_status !== "submitted") {
-        throw createHttpError(
-          409,
-          "Only submitted orders can be toggled active/inactive",
-          "order_active_conflict"
-        );
-      }
-
       const { rows: updatedRows } = await executor.query(
         `
           UPDATE orders

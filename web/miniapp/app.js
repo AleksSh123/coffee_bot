@@ -747,7 +747,7 @@ function renderOrders() {
           ${
             canDeleteOwnOrder(order)
               ? `<div class="history-card__actions">
-                  <button class="ghost-button" type="button" data-action="delete-own-order" data-order-id="${order.id}">Удалить заявку</button>
+                  <button class="ghost-button" type="button" data-action="delete-own-order" data-order-id="${order.id}" ${order.isActive ? "" : "disabled"}>Удалить заявку</button>
                 </div>`
               : ""
           }
@@ -777,7 +777,7 @@ function buildAdminActionButton(order, field, nextValue, label) {
   const currentValue = order[field];
   const isCurrentState = currentValue === nextValue;
   const isLocked = order.orderContextStatus === "closed";
-  const isDisabled = isLocked || order.lifecycleStatus !== "submitted" || isCurrentState;
+  const isDisabled = isLocked || order.lifecycleStatus !== "submitted" || isCurrentState || !order.isActive;
   const isActionAvailable =
     !isLocked && order.lifecycleStatus === "submitted" && !isCurrentState;
   const stateClass = isActionAvailable
@@ -852,7 +852,7 @@ function renderAdminOrders() {
             ${group.orders
               .map(
                 (order) => `
-                  <article class="admin-card">
+                  <article class="admin-card ${order.isActive ? "" : "admin-card--inactive"}">
                     <div class="admin-card__header">
                       <div>
                         <h3 class="admin-card__title">Заявка #${order.id}</h3>
@@ -872,7 +872,7 @@ function renderAdminOrders() {
                     <div class="admin-meta">
                       <label class="order-active-toggle">
                         <input type="checkbox" data-action="admin-toggle-order-active" data-order-id="${order.id}" ${order.isActive ? "checked" : ""} />
-                        <span>${order.isActive ? "Активная" : "Неактивная"}</span>
+                        <span>Активная</span>
                       </label>
                     </div>
                     <div class="admin-order-items order-lines">

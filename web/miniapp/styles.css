@@ -728,7 +728,7 @@ button {
 }
 
 .history-card--inactive {
-  opacity: 0.55;
+  opacity: 0.5;
   filter: grayscale(1);
 }
 
@@ -741,6 +741,59 @@ button {
 .history-card--inactive .history-card__actions {
   opacity: 1;
   filter: none;
+}
+
+.admin-card--inactive {
+  position: relative;
+}
+
+.admin-card--inactive::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  opacity: 1;
+  pointer-events: none;
+  border-radius: inherit;
+  z-index: 1;
+}
+
+.admin-card--inactive .admin-actions {
+  pointer-events: none;
+}
+
+.admin-card--inactive .admin-card__header,
+.admin-card--inactive .admin-meta .status-chip,
+.admin-card--inactive .admin-order-items,
+.admin-card--inactive .admin-actions {
+  filter: grayscale(1);
+}
+
+.admin-card--inactive .admin-actions .admin-action-button,
+.admin-card--inactive .admin-order-items .order-line,
+.admin-card--inactive .admin-card__total,
+.admin-card--inactive .admin-card__title,
+.admin-card--inactive .order-line__meta,
+.admin-card--inactive .order-line__price,
+.admin-card--inactive .order-line__name {
+  opacity: 0.7;
+}
+
+.admin-card--inactive .order-active-toggle {
+  position: relative;
+  z-index: 2;
+  pointer-events: auto;
+  opacity: 1;
+  filter: none;
+  background: var(--surface);
+  border: 1px solid var(--primary);
+  box-shadow: 0 0 0 2px rgba(139, 61, 20, 0.16);
+  border-radius: var(--radius-md);
+  padding: 8px 10px;
+}
+
+.admin-card--inactive .order-active-toggle input {
+  pointer-events: auto;
 }
 
 .order-line {
