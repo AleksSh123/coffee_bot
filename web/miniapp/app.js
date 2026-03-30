@@ -706,7 +706,7 @@ function renderOrders() {
   elements.ordersList.innerHTML = submittedOrders
     .map(
       (order) => `
-        <article class="history-card">
+        <article class="history-card ${order.isActive ? "" : "history-card--inactive"}">
           <div class="history-card__header">
             <div>
               <h3 class="history-card__title">Заявка #${order.id}</h3>

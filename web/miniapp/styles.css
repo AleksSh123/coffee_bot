@@ -727,6 +727,22 @@ button {
   height: 16px;
 }
 
+.history-card--inactive {
+  opacity: 0.55;
+  filter: grayscale(1);
+}
+
+.history-card--inactive .history-card__header,
+.history-card--inactive .history-meta,
+.history-card--inactive .order-lines {
+  opacity: 0.8;
+}
+
+.history-card--inactive .history-card__actions {
+  opacity: 1;
+  filter: none;
+}
+
 .order-line {
   display: grid;
   gap: 4px;
