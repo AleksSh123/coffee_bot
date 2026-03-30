@@ -349,22 +349,23 @@ export function createApiServer({
         return;
       }
 
+      const adminOrderActiveParams = isPathMatch(url.pathname, "/api/admin/orders/:orderId/active");
       const adminOrderParams = isPathMatch(url.pathname, "/api/admin/orders/:orderId");
 
-      if (request.method === "GET" && adminOrderParams) {
-        const order = await orderService.getAdminOrder(adminOrderParams.orderId);
+      if (request.method === "PATCH" && adminOrderActiveParams) {
+        const body = await readJsonBody(request);
+        const order = await orderService.setAdminOrderActive(
+          adminOrderActiveParams.orderId,
+          body.active
+        );
         sendJson(response, 200, {
           order
         });
         return;
       }
 
-      if (request.method === "PATCH" && adminOrderParams && url.pathname.endsWith("/active")) {
-        const body = await readJsonBody(request);
-        const order = await orderService.setAdminOrderActive(
-          adminOrderParams.orderId,
-          body.active
-        );
+      if (request.method === "GET" && adminOrderParams) {
+        const order = await orderService.getAdminOrder(adminOrderParams.orderId);
         sendJson(response, 200, {
           order
         });
