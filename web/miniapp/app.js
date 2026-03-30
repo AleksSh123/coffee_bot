@@ -629,21 +629,26 @@ function renderCatalog() {
 }
 
 function renderDraft() {
+  const draftOrder = state.draftOrder;
+  const hasItems = Boolean(draftOrder && draftOrder.items.length > 0);
+  const isContextClosed = draftOrder?.orderContextStatus === "closed";
+
   if (!state.authToken) {
     elements.draftList.innerHTML = `<div class="empty-state">${escapeHtml(buildAuthRequiredMessage())}</div>`;
     elements.draftTotal.textContent = "";
+    elements.submitOrderButton.disabled = true;
     return;
   }
 
-  const draftOrder = state.draftOrder;
   const currentOrderContextLabel = getCurrentOrderContextLabel();
   const contextBanner = buildOrderContextBanner(currentOrderContextLabel);
 
-  if (!draftOrder || draftOrder.items.length === 0) {
+  if (!hasItems) {
     elements.draftList.innerHTML =
       contextBanner +
       '<div class="empty-state">Заявка пока пустая. Добавьте позиции из каталога.</div>';
     elements.draftTotal.textContent = "0 позиций";
+    elements.submitOrderButton.disabled = true;
     return;
   }
 
@@ -687,6 +692,7 @@ function renderDraft() {
   elements.draftTotal.textContent = `${draftOrder.totals.totalQuantity} шт. · ${formatPrice(
     draftOrder.totals.totalAmount
   )}`;
+  elements.submitOrderButton.disabled = isContextClosed;
 }
 
 function renderOrders() {
@@ -789,12 +795,13 @@ function buildAdminActionButton(order, field, nextValue, label) {
 
 function buildOrderContextStatusButton(group, nextStatus, label) {
   const isCurrentState = group.status === nextStatus;
-  const stateClass = isCurrentState
-    ? "admin-action-button--muted"
-    : "admin-action-button--emphasis";
+  const isClosed = group.status === "closed";
+  const isForcedDisabled = isClosed && nextStatus === "sent";
+  const isDisabled = isCurrentState || isForcedDisabled;
+  const stateClass = isDisabled ? "admin-action-button--muted" : "admin-action-button--emphasis";
   const reopenClass = nextStatus === "open" ? "admin-action-button--reopen" : "";
 
-  return `<button class="admin-action-button ${stateClass} ${reopenClass}" type="button" data-action="admin-update-order-context-status" data-order-context-key="${escapeHtml(group.key)}" data-order-context-status="${escapeHtml(nextStatus)}" ${isCurrentState ? "disabled" : ""}>${escapeHtml(label)}</button>`;
+  return `<button class="admin-action-button ${stateClass} ${reopenClass}" type="button" data-action="admin-update-order-context-status" data-order-context-key="${escapeHtml(group.key)}" data-order-context-status="${escapeHtml(nextStatus)}" ${isDisabled ? "disabled" : ""}>${escapeHtml(label)}</button>`;
 }
 
 function renderAdminOrders() {
@@ -822,83 +829,89 @@ function renderAdminOrders() {
 
         return `
         <section class="admin-order-group ${groupStateClass}">
-          <article class="admin-order-group__summary">
-            <div class="admin-order-group__header">
-              <div>
-                <h3 class="admin-order-group__title">Заказ ${escapeHtml(formatOrderContextId(group.key))}</h3>
-                <div class="card-subtitle">${escapeHtml(formatOrderContextText(group.label))}</div>
-                <div class="admin-order-group__meta">
-                  <span class="status-chip status-chip--order-context">${escapeHtml(getOrderContextStatusLabel(group.status))}</span>
-                  <span class="hero__meta-chip">${group.orders.length} заявок</span>
+          <div class="admin-order-group__sticky">
+            <div class="admin-order-group__summary">
+              <div class="admin-order-group__header">
+                <div>
+                  <h3 class="admin-order-group__title">Заказ ${escapeHtml(formatOrderContextId(group.key))}</h3>
+                  <div class="card-subtitle">${escapeHtml(formatOrderContextText(group.label))}</div>
+                  <div class="admin-order-group__meta">
+                    <span class="status-chip status-chip--order-context">${escapeHtml(getOrderContextStatusLabel(group.status))}</span>
+                    <span class="hero__meta-chip">${group.orders.length} заявок</span>
+                  </div>
+                </div>
+                <div class="admin-order-group__summary-side">
+                  <div class="admin-order-group__total">${escapeHtml(formatPrice(group.totalAmount))}</div>
+                <div class="admin-order-group__payment-summary">Оплачено ${escapeHtml(formatPrice(group.paidAmount))} из ${escapeHtml(formatPrice(group.totalAmount))}</div>
                 </div>
               </div>
-              <div class="admin-order-group__summary-side">
-                <div class="admin-order-group__total">${escapeHtml(formatPrice(group.totalAmount))}</div>
-                <div class="admin-order-group__payment-summary">Оплачено ${escapeHtml(formatPrice(group.paidAmount))} из ${escapeHtml(formatPrice(group.totalAmount))}</div>
-              </div>
             </div>
-            <div class="admin-order-group__actions">
-              <div class="admin-actions__row admin-actions__row--triple">
-                ${buildOrderContextStatusButton(group, "open", "Открыт")}
-                ${buildOrderContextStatusButton(group, "sent", "Отправлен")}
-                ${buildOrderContextStatusButton(group, "closed", "Закрыт")}
-              </div>
-              <button class="ghost-button admin-order-group__toggle" type="button" data-action="toggle-order-context" data-order-context-key="${escapeHtml(group.key)}">
-                ${isCollapsed ? "Развернуть" : "Свернуть"}
-              </button>
+          </div>
+          <div class="admin-order-group__actions">
+            <div class="admin-actions__row admin-actions__row--triple">
+              ${buildOrderContextStatusButton(group, "open", "Открыт")}
+              ${buildOrderContextStatusButton(group, "sent", "Отправлен")}
+              ${buildOrderContextStatusButton(group, "closed", "Закрыт")}
             </div>
-          </article>
+          </div>
+          <div class="admin-order-group__toggle-row">
+            <button class="ghost-button admin-order-group__toggle" type="button" data-action="toggle-order-context" data-order-context-key="${escapeHtml(group.key)}">
+              ${isCollapsed ? "Развернуть заявки" : "Свернуть заявки"}
+            </button>
+          </div>
           <div class="admin-order-group__orders ${isCollapsed ? "is-hidden" : ""}">
             ${group.orders
               .map(
                 (order) => `
-                  <article class="admin-card ${order.isActive ? "" : "admin-card--inactive"}">
-                    <div class="admin-card__header">
-                      <div>
-                        <h3 class="admin-card__title">Заявка #${order.id}</h3>
-                        <div class="card-subtitle">${escapeHtml(order.user ? getDisplayName(order.user) : "Пользователь неизвестен")}</div>
-                        <div class="card-context">${escapeHtml(formatOrderContextText(order.orderContextLabel))}</div>
+                  <div class="admin-order-group__order">
+                    <article class="admin-card ${order.isActive ? "" : "admin-card--inactive"}">
+                      <div class="admin-card__header">
+                        <div>
+                          <h3 class="admin-card__title">Заявка #${order.id}</h3>
+                          <div class="card-subtitle">${escapeHtml(order.user ? getDisplayName(order.user) : "Пользователь неизвестен")}</div>
+                          <div class="card-context">${escapeHtml(formatOrderContextText(order.orderContextLabel))}</div>
+                        </div>
+                        <div class="admin-card__total">${escapeHtml(formatPrice(order.totals.totalAmount))}</div>
                       </div>
-                      <div class="admin-card__total">${escapeHtml(formatPrice(order.totals.totalAmount))}</div>
-                    </div>
-                    <div class="admin-meta">
-                      <span class="status-chip status-chip--${order.isActive ? "active" : "inactive"}">${escapeHtml(
-                        getActiveStatusLabel(order.isActive)
-                      )}</span>
-                      <span class="status-chip status-chip--${escapeHtml(order.lifecycleStatus)}">${escapeHtml(getLifecycleStatusLabel(order.lifecycleStatus))}</span>
-                      <span class="status-chip status-chip--${escapeHtml(order.paymentStatus)}">${escapeHtml(getPaymentStatusLabel(order.paymentStatus))}</span>
-                      <span class="status-chip status-chip--${escapeHtml(order.fulfillmentStatus)}">${escapeHtml(getFulfillmentStatusLabel(order.fulfillmentStatus))}</span>
-                    </div>
-                    <div class="admin-meta">
-                      <label class="order-active-toggle">
-                        <input type="checkbox" data-action="admin-toggle-order-active" data-order-id="${order.id}" ${order.isActive ? "checked" : ""} />
-                        <span>Активная</span>
-                      </label>
-                    </div>
-                    <div class="admin-order-items order-lines">
-                      ${order.items
-                        .map(
-                          (item) => `
-                            <div class="order-line">
-                              <div class="order-line__name">${escapeHtml(item.productName)}</div>
-                              <div class="order-line__meta">${escapeHtml(formatOrderItemVariant(item))}</div>
-                              <div class="order-line__price">${escapeHtml(formatOrderItemPricing(item))}</div>
-                            </div>
-                          `
-                        )
-                        .join("")}
-                    </div>
-                    <div class="admin-actions">
-                      <div class="admin-actions__row">
-                        ${buildAdminActionButton(order, "paymentStatus", "paid", "Отметить как оплаченный")}
-                        ${buildAdminActionButton(order, "paymentStatus", "unpaid", "Вернуть в неоплаченный")}
+                      <div class="admin-meta">
+                        <span class="status-chip status-chip--${order.isActive ? "active" : "inactive"}">${escapeHtml(
+                          getActiveStatusLabel(order.isActive)
+                        )}</span>
+                        <span class="status-chip status-chip--${escapeHtml(order.lifecycleStatus)}">${escapeHtml(getLifecycleStatusLabel(order.lifecycleStatus))}</span>
+                        <span class="status-chip status-chip--${escapeHtml(order.paymentStatus)}">${escapeHtml(getPaymentStatusLabel(order.paymentStatus))}</span>
+                        <span class="status-chip status-chip--${escapeHtml(order.fulfillmentStatus)}">${escapeHtml(getFulfillmentStatusLabel(order.fulfillmentStatus))}</span>
                       </div>
-                      <div class="admin-actions__row">
-                        ${buildAdminActionButton(order, "fulfillmentStatus", "fulfilled", "Отметить как исполненный")}
-                        ${buildAdminActionButton(order, "fulfillmentStatus", "pending", "Вернуть в неисполненный")}
+                      <div class="admin-meta">
+                        <label class="order-active-toggle">
+                          <input type="checkbox" data-action="admin-toggle-order-active" data-order-id="${order.id}" ${order.isActive ? "checked" : ""} />
+                          <span>Активная</span>
+                        </label>
                       </div>
-                    </div>
-                  </article>
+                      <div class="admin-order-items order-lines">
+                        ${order.items
+                          .map(
+                            (item) => `
+                              <div class="order-line">
+                                <div class="order-line__name">${escapeHtml(item.productName)}</div>
+                                <div class="order-line__meta">${escapeHtml(formatOrderItemVariant(item))}</div>
+                                <div class="order-line__price">${escapeHtml(formatOrderItemPricing(item))}</div>
+                              </div>
+                            `
+                          )
+                          .join("")}
+                      </div>
+                      <div class="admin-actions">
+                        <div class="admin-actions__row">
+                          ${buildAdminActionButton(order, "paymentStatus", "paid", "Отметить как оплаченный")}
+                          ${buildAdminActionButton(order, "paymentStatus", "unpaid", "Вернуть в неоплаченный")}
+                        </div>
+                        <div class="admin-actions__row">
+                          ${buildAdminActionButton(order, "fulfillmentStatus", "fulfilled", "Отметить как исполненный")}
+                          ${buildAdminActionButton(order, "fulfillmentStatus", "pending", "Вернуть в неисполненный")}
+                        </div>
+                      </div>
+                    </article>
+                  </div>
                 `
               )
               .join("")}
