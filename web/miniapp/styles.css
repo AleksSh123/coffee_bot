@@ -392,6 +392,93 @@ button {
   box-shadow: inset 0 0 0 1px rgba(244, 230, 216, 0.14);
 }
 
+.admin-order-group--closed .admin-order-group__summary {
+  border-color: rgba(227, 229, 233, 0.14);
+  background: rgba(79, 84, 93, 0.86);
+  color: #eef1f5;
+  box-shadow:
+    0 18px 34px rgba(32, 36, 42, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.admin-order-group--closed .admin-order-group__title {
+  color: #f5f7fa;
+}
+
+.admin-order-group--closed .admin-order-group__header,
+.admin-order-group--closed .admin-order-group__summary .admin-order-group__meta,
+.admin-order-group--closed .admin-order-group__payment-summary,
+.admin-order-group--closed .admin-order-group__total {
+  opacity: 0.5;
+}
+
+.admin-order-group--closed .admin-order-group__summary .card-subtitle,
+.admin-order-group--closed .admin-order-group__payment-summary {
+  color: rgba(238, 241, 245, 0.76);
+}
+
+.admin-order-group--closed .admin-order-group__total {
+  color: #f5f7fa;
+}
+
+.admin-order-group--closed .admin-order-group__summary .hero__meta-chip,
+.admin-order-group--closed .admin-order-group__summary .status-chip--order-context {
+  border-color: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.08);
+  color: #f5f7fa;
+}
+
+.admin-order-group--closed .admin-order-group__summary .ghost-button,
+.admin-order-group--closed .admin-order-group__summary .admin-action-button--muted,
+.admin-order-group--closed .admin-order-group__summary .admin-action-button--emphasis {
+  background: rgba(255, 255, 255, 0.1);
+  color: #f0f2f5;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.admin-order-group--closed .admin-order-group__actions {
+  opacity: 0.5;
+}
+
+.admin-order-group--closed .admin-order-group__summary .admin-action-button--reopen,
+.admin-order-group--closed .admin-order-group__summary .admin-order-group__toggle {
+  opacity: 1;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.2);
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.2),
+    0 8px 18px rgba(32, 36, 42, 0.18);
+}
+
+.admin-order-group--closed .admin-order-group__orders {
+  border-left-color: rgba(121, 129, 140, 0.42);
+  opacity: 0.5;
+  filter: grayscale(1);
+}
+
+.admin-order-group--closed .admin-card {
+  background: rgba(241, 243, 246, 0.72);
+  border-color: rgba(121, 129, 140, 0.24);
+  box-shadow: none;
+}
+
+.admin-order-group--closed .order-line {
+  background: rgba(255, 255, 255, 0.56);
+}
+
+.admin-order-group--closed .admin-card__title,
+.admin-order-group--closed .admin-card__total,
+.admin-order-group--closed .order-line__name,
+.admin-order-group--closed .order-line__price {
+  color: #4f545d;
+}
+
+.admin-order-group--closed .card-subtitle,
+.admin-order-group--closed .card-context,
+.admin-order-group--closed .order-line__meta {
+  color: #69717d;
+}
+
 .catalog-card,
 .draft-card,
 .history-card,
@@ -404,6 +491,7 @@ button {
 
 .catalog-card__header,
 .draft-card__header,
+.history-card__header,
 .admin-card__header {
   display: flex;
   align-items: flex-start;
@@ -595,6 +683,16 @@ button {
   background: rgba(139, 61, 20, 0.12);
 }
 
+.status-chip--active {
+  color: var(--success);
+  background: rgba(46, 106, 63, 0.18);
+}
+
+.status-chip--inactive {
+  color: var(--text-muted);
+  background: rgba(121, 129, 140, 0.24);
+}
+
 .admin-actions,
 .admin-order-items {
   display: grid;
@@ -606,6 +704,27 @@ button {
   display: grid;
   gap: 12px;
   margin-top: 16px;
+}
+
+.history-card__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+
+.order-active-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text);
+}
+
+.order-active-toggle input {
+  width: 16px;
+  height: 16px;
 }
 
 .order-line {
@@ -744,6 +863,7 @@ button {
 
   .offer-row__actions,
   .order-item-row__actions,
+  .history-card__actions,
   .panel__header {
     justify-content: flex-start;
   }

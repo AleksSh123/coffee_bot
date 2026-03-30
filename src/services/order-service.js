@@ -75,6 +75,7 @@ function mapOrderRow(row, items, user = null) {
     orderContextKey: row.order_context_key,
     orderContextLabel: row.order_context_label,
     orderContextStatus: row.order_context_status ?? "open",
+    isActive: row.is_active ?? true,
     lifecycleStatus: row.lifecycle_status,
     paymentStatus: row.payment_status,
     fulfillmentStatus: row.fulfillment_status,
@@ -521,6 +522,196 @@ export function createOrderService({ db, catalogService, logger }) {
     return mapOrderRow(rows[0], orderData.items);
   }
 
+  async function deleteOwnOrder(identity, orderId) {
+    const normalizedOrderId = normalizePositiveInteger(orderId, "orderId");
+
+    return db.transaction(async (executor) => {
+      const user = await ensureTelegramUser(identity, executor);
+      const { rows } = await executor.query(
+        `
+          SELECT *
+          FROM orders
+          WHERE id = $1 AND user_id = $2
+          LIMIT 1
+        `,
+        [normalizedOrderId, user.id]
+      );
+
+      if (rows.length === 0) {
+        throw createHttpError(404, "Order was not found", "order_not_found");
+      }
+
+      const currentOrder = rows[0];
+      const orderData = await loadOrderById(executor, currentOrder.id);
+
+      if (currentOrder.lifecycle_status === "draft") {
+        await executor.query(
+          `
+            DELETE FROM orders
+            WHERE id = $1
+          `,
+          [normalizedOrderId]
+        );
+
+        logger.info("miniapp.order.deleted_by_user", {
+          order_id: normalizedOrderId,
+          telegram_user_id: user.telegramUserId,
+          previous_lifecycle_status: currentOrder.lifecycle_status,
+          next_lifecycle_status: "deleted"
+        });
+
+        return null;
+      }
+
+      if (currentOrder.lifecycle_status === "cancelled") {
+        return mapOrderRow(currentOrder, orderData.items);
+      }
+
+      if (
+        currentOrder.lifecycle_status !== "submitted" ||
+        currentOrder.payment_status !== "unpaid" ||
+        currentOrder.fulfillment_status !== "pending"
+      ) {
+        throw createHttpError(
+          409,
+          "Only unpaid and unfulfilled submitted orders can be deleted",
+          "order_delete_conflict"
+        );
+      }
+
+      const { rows: updatedRows } = await executor.query(
+        `
+          UPDATE orders
+          SET
+            lifecycle_status = 'cancelled',
+            updated_at = NOW()
+          WHERE id = $1
+          RETURNING *
+        `,
+        [normalizedOrderId]
+      );
+
+      const deletedOrder = updatedRows[0];
+
+      logger.info("miniapp.order.deleted_by_user", {
+        order_id: deletedOrder.id,
+        telegram_user_id: user.telegramUserId,
+        previous_lifecycle_status: currentOrder.lifecycle_status,
+        next_lifecycle_status: deletedOrder.lifecycle_status
+      });
+
+      return mapOrderRow(deletedOrder, orderData.items);
+    });
+  }
+
+  async function setOrderActive(identity, orderId, active) {
+    const normalizedOrderId = normalizePositiveInteger(orderId, "orderId");
+    const nextActive = Boolean(active);
+
+    return db.transaction(async (executor) => {
+      const user = await ensureTelegramUser(identity, executor);
+      const { rows } = await executor.query(
+        `
+          SELECT *
+          FROM orders
+          WHERE id = $1 AND user_id = $2
+          LIMIT 1
+        `,
+        [normalizedOrderId, user.id]
+      );
+
+      if (rows.length === 0) {
+        throw createHttpError(404, "Order was not found", "order_not_found");
+      }
+
+      const currentOrder = rows[0];
+
+      if (currentOrder.lifecycle_status !== "submitted") {
+        throw createHttpError(
+          409,
+          "Only submitted orders can be toggled active/inactive by owner",
+          "order_active_conflict_owner"
+        );
+      }
+
+      const { rows: updatedRows } = await executor.query(
+        `
+          UPDATE orders
+          SET
+            is_active = $1,
+            updated_at = NOW()
+          WHERE id = $2
+          RETURNING *
+        `,
+        [nextActive, normalizedOrderId]
+      );
+
+      const orderData = await loadOrderById(executor, normalizedOrderId);
+      const updatedOrder = updatedRows[0];
+
+      logger.info("miniapp.order.active.updated", {
+        order_id: updatedOrder.id,
+        telegram_user_id: user.telegramUserId,
+        is_active: updatedOrder.is_active
+      });
+
+      return mapOrderRow(updatedOrder, orderData.items);
+    });
+  }
+
+  async function setAdminOrderActive(orderId, active) {
+    const normalizedOrderId = normalizePositiveInteger(orderId, "orderId");
+    const nextActive = Boolean(active);
+
+    return db.transaction(async (executor) => {
+      const { rows } = await executor.query(
+        `
+          SELECT *
+          FROM orders
+          WHERE id = $1
+          LIMIT 1
+        `,
+        [normalizedOrderId]
+      );
+
+      if (rows.length === 0) {
+        throw createHttpError(404, "Order was not found", "order_not_found");
+      }
+
+      const currentOrder = rows[0];
+
+      if (currentOrder.lifecycle_status !== "submitted") {
+        throw createHttpError(
+          409,
+          "Only submitted orders can be toggled active/inactive",
+          "order_active_conflict"
+        );
+      }
+
+      const { rows: updatedRows } = await executor.query(
+        `
+          UPDATE orders
+          SET
+            is_active = $1,
+            updated_at = NOW()
+          WHERE id = $2
+          RETURNING *
+        `,
+        [nextActive, normalizedOrderId]
+      );
+
+      const orderData = await loadOrderById(executor, normalizedOrderId);
+      const updatedOrder = updatedRows[0];
+
+      logger.info("miniapp.order.active.updated", {
+        order_id: updatedOrder.id,
+        is_active: updatedOrder.is_active
+      });
+
+      return mapOrderRow(updatedOrder, orderData.items);
+    });
+  }
+
   async function listAdminOrders(filters = {}) {
     const whereClauses = [];
     const params = [];
@@ -744,6 +935,7 @@ export function createOrderService({ db, catalogService, logger }) {
 
   return {
     addDraftOrderItem,
+    deleteOwnOrder,
     ensureTelegramUser,
     getAdminOrder,
     getDraftOrder,
@@ -751,6 +943,8 @@ export function createOrderService({ db, catalogService, logger }) {
     listAdminOrders,
     listOwnOrders,
     removeDraftOrderItem,
+    setOrderActive,
+    setAdminOrderActive,
     submitDraftOrder,
     updateAdminOrderContextStatus,
     updateAdminOrderStatuses,

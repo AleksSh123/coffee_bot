@@ -329,6 +329,14 @@ export function createApiServer({
         return;
       }
 
+      if (request.method === "DELETE" && ownOrderParams) {
+        const order = await orderService.deleteOwnOrder(identity, ownOrderParams.orderId);
+        sendJson(response, 200, {
+          order
+        });
+        return;
+      }
+
       if (!identity.isAdmin) {
         throw createHttpError(403, "Administrator access is required", "admin_access_required");
       }
@@ -345,6 +353,18 @@ export function createApiServer({
 
       if (request.method === "GET" && adminOrderParams) {
         const order = await orderService.getAdminOrder(adminOrderParams.orderId);
+        sendJson(response, 200, {
+          order
+        });
+        return;
+      }
+
+      if (request.method === "PATCH" && adminOrderParams && url.pathname.endsWith("/active")) {
+        const body = await readJsonBody(request);
+        const order = await orderService.setAdminOrderActive(
+          adminOrderParams.orderId,
+          body.active
+        );
         sendJson(response, 200, {
           order
         });

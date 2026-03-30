@@ -18,6 +18,7 @@ const schemaStatements = [
       order_context_key TEXT,
       order_context_label TEXT,
       order_context_status TEXT NOT NULL DEFAULT 'open',
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
       lifecycle_status TEXT NOT NULL DEFAULT 'draft',
       payment_status TEXT NOT NULL DEFAULT 'unpaid',
       fulfillment_status TEXT NOT NULL DEFAULT 'pending',
@@ -50,12 +51,20 @@ const schemaStatements = [
     ADD COLUMN IF NOT EXISTS order_context_status TEXT DEFAULT 'open'
   `,
   `
+    ALTER TABLE orders
+    ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE
+  `,
+  `
     UPDATE orders
     SET
       order_context_key = COALESCE(order_context_key, 'legacy'),
       order_context_label = COALESCE(order_context_label, 'Архивный заказ'),
-      order_context_status = COALESCE(order_context_status, 'open')
-    WHERE order_context_key IS NULL OR order_context_label IS NULL OR order_context_status IS NULL
+      order_context_status = COALESCE(order_context_status, 'open'),
+      is_active = COALESCE(is_active, TRUE)
+    WHERE order_context_key IS NULL
+      OR order_context_label IS NULL
+      OR order_context_status IS NULL
+      OR is_active IS NULL
   `,
   `
     ALTER TABLE orders

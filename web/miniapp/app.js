@@ -268,7 +268,7 @@ function getOrderContextStatusLabel(status) {
 
 function getLifecycleStatusLabel(status) {
   const labels = {
-    draft: "черновик",
+    draft: "черновая",
     submitted: "отправлена",
     cancelled: "отменена"
   };
@@ -278,8 +278,8 @@ function getLifecycleStatusLabel(status) {
 
 function getPaymentStatusLabel(status) {
   const labels = {
-    paid: "оплаченный",
-    unpaid: "неоплаченный"
+    paid: "оплачена",
+    unpaid: "не оплачена"
   };
 
   return labels[status] ?? status ?? "не указан";
@@ -287,11 +287,23 @@ function getPaymentStatusLabel(status) {
 
 function getFulfillmentStatusLabel(status) {
   const labels = {
-    fulfilled: "исполненный",
-    pending: "неисполненный"
+    fulfilled: "исполнена",
+    pending: "не исполнена"
   };
 
   return labels[status] ?? status ?? "не указан";
+}
+
+function canDeleteOwnOrder(order) {
+  return (
+    order?.lifecycleStatus === "submitted" &&
+    order?.paymentStatus === "unpaid" &&
+    order?.fulfillmentStatus === "pending"
+  );
+}
+
+function getActiveStatusLabel(isActive) {
+  return isActive ? "активная" : "неактивная";
 }
 
 function groupAdminOrdersByContext(orders) {
@@ -303,15 +315,14 @@ function groupAdminOrdersByContext(orders) {
       ? order.orderContextKey.trim()
       : "legacy";
     const orderAmount = Number(order.totals?.totalAmount ?? 0);
+    const effectiveAmount = order.isActive ? orderAmount : 0;
     const existingGroup = groupsByKey.get(groupKey);
 
     if (existingGroup) {
       existingGroup.orders.push(order);
-      existingGroup.totalAmount = Number(
-        (existingGroup.totalAmount + orderAmount).toFixed(2)
-      );
-      if (order.paymentStatus === "paid") {
-        existingGroup.paidAmount = Number((existingGroup.paidAmount + orderAmount).toFixed(2));
+      existingGroup.totalAmount = Number((existingGroup.totalAmount + effectiveAmount).toFixed(2));
+      if (order.isActive && order.paymentStatus === "paid") {
+        existingGroup.paidAmount = Number((existingGroup.paidAmount + effectiveAmount).toFixed(2));
       }
       continue;
     }
@@ -320,8 +331,8 @@ function groupAdminOrdersByContext(orders) {
       key: groupKey,
       label: order.orderContextLabel ?? "Архивный заказ",
       status: order.orderContextStatus ?? "open",
-      paidAmount: order.paymentStatus === "paid" ? orderAmount : 0,
-      totalAmount: orderAmount,
+      paidAmount: order.isActive && order.paymentStatus === "paid" ? orderAmount : 0,
+      totalAmount: order.isActive ? orderAmount : 0,
       orders: [order]
     };
 
@@ -684,7 +695,7 @@ function renderOrders() {
     return;
   }
 
-  const submittedOrders = state.orders.filter((order) => order.lifecycleStatus !== "draft");
+  const submittedOrders = state.orders.filter((order) => order.lifecycleStatus === "submitted");
 
   if (submittedOrders.length === 0) {
     elements.ordersList.innerHTML =
@@ -707,6 +718,9 @@ function renderOrders() {
             <div class="history-card__total">${escapeHtml(formatPrice(order.totals.totalAmount))}</div>
           </div>
           <div class="history-meta">
+            <span class="status-chip status-chip--${order.isActive ? "active" : "inactive"}">${escapeHtml(
+              getActiveStatusLabel(order.isActive)
+            )}</span>
             <span class="status-chip status-chip--${escapeHtml(order.lifecycleStatus)}">${escapeHtml(
               getLifecycleStatusLabel(order.lifecycleStatus)
             )}</span>
@@ -730,6 +744,13 @@ function renderOrders() {
               )
               .join("")}
           </div>
+          ${
+            canDeleteOwnOrder(order)
+              ? `<div class="history-card__actions">
+                  <button class="ghost-button" type="button" data-action="delete-own-order" data-order-id="${order.id}">Удалить заявку</button>
+                </div>`
+              : ""
+          }
         </article>
       `
     )
@@ -755,8 +776,10 @@ function renderAdminFilters() {
 function buildAdminActionButton(order, field, nextValue, label) {
   const currentValue = order[field];
   const isCurrentState = currentValue === nextValue;
-  const isDisabled = order.lifecycleStatus !== "submitted" || isCurrentState;
-  const isActionAvailable = order.lifecycleStatus === "submitted" && !isCurrentState;
+  const isLocked = order.orderContextStatus === "closed";
+  const isDisabled = isLocked || order.lifecycleStatus !== "submitted" || isCurrentState;
+  const isActionAvailable =
+    !isLocked && order.lifecycleStatus === "submitted" && !isCurrentState;
   const stateClass = isActionAvailable
     ? "admin-action-button--emphasis"
     : "admin-action-button--muted";
@@ -769,8 +792,9 @@ function buildOrderContextStatusButton(group, nextStatus, label) {
   const stateClass = isCurrentState
     ? "admin-action-button--muted"
     : "admin-action-button--emphasis";
+  const reopenClass = nextStatus === "open" ? "admin-action-button--reopen" : "";
 
-  return `<button class="admin-action-button ${stateClass}" type="button" data-action="admin-update-order-context-status" data-order-context-key="${escapeHtml(group.key)}" data-order-context-status="${escapeHtml(nextStatus)}" ${isCurrentState ? "disabled" : ""}>${escapeHtml(label)}</button>`;
+  return `<button class="admin-action-button ${stateClass} ${reopenClass}" type="button" data-action="admin-update-order-context-status" data-order-context-key="${escapeHtml(group.key)}" data-order-context-status="${escapeHtml(nextStatus)}" ${isCurrentState ? "disabled" : ""}>${escapeHtml(label)}</button>`;
 }
 
 function renderAdminOrders() {
@@ -794,9 +818,10 @@ function renderAdminOrders() {
     .map(
       (group) => {
         const isCollapsed = state.collapsedAdminOrderContexts.has(group.key);
+        const groupStateClass = group.status === "closed" ? "admin-order-group--closed" : "";
 
         return `
-        <section class="admin-order-group">
+        <section class="admin-order-group ${groupStateClass}">
           <article class="admin-order-group__summary">
             <div class="admin-order-group__header">
               <div>
@@ -837,9 +862,18 @@ function renderAdminOrders() {
                       <div class="admin-card__total">${escapeHtml(formatPrice(order.totals.totalAmount))}</div>
                     </div>
                     <div class="admin-meta">
+                      <span class="status-chip status-chip--${order.isActive ? "active" : "inactive"}">${escapeHtml(
+                        getActiveStatusLabel(order.isActive)
+                      )}</span>
                       <span class="status-chip status-chip--${escapeHtml(order.lifecycleStatus)}">${escapeHtml(getLifecycleStatusLabel(order.lifecycleStatus))}</span>
                       <span class="status-chip status-chip--${escapeHtml(order.paymentStatus)}">${escapeHtml(getPaymentStatusLabel(order.paymentStatus))}</span>
                       <span class="status-chip status-chip--${escapeHtml(order.fulfillmentStatus)}">${escapeHtml(getFulfillmentStatusLabel(order.fulfillmentStatus))}</span>
+                    </div>
+                    <div class="admin-meta">
+                      <label class="order-active-toggle">
+                        <input type="checkbox" data-action="admin-toggle-order-active" data-order-id="${order.id}" ${order.isActive ? "checked" : ""} />
+                        <span>${order.isActive ? "Активная" : "Неактивная"}</span>
+                      </label>
                     </div>
                     <div class="admin-order-items order-lines">
                       ${order.items
@@ -1057,6 +1091,49 @@ async function submitDraftOrder() {
   setStatus(`Заявка #${payload.order.id} отправлена.`, "success");
 }
 
+async function deleteOwnOrder(orderId) {
+  setStatus("Удаляю заявку...", "neutral");
+  await apiRequest(`/api/me/orders/${orderId}`, {
+    method: "DELETE"
+  });
+  await refreshOwnOrders();
+  if (state.user?.isAdmin) {
+    await refreshAdminOrders();
+  }
+  renderAll();
+  setStatus("Заявка удалена из вашего списка.", "success");
+}
+
+async function setOrderActive(orderId, isActive) {
+  setStatus("Переключаю активность заявки...", "neutral");
+  await apiRequest(`/api/me/orders/${orderId}/active`, {
+    method: "PATCH",
+    body: {
+      active: Boolean(isActive)
+    }
+  });
+  await refreshOwnOrders();
+  if (state.user?.isAdmin) {
+    await refreshAdminOrders();
+  }
+  renderAll();
+  setStatus("Статус активности обновлён.", "success");
+}
+
+async function setAdminOrderActive(orderId, isActive) {
+  setStatus("Переключаю активность заявки...", "neutral");
+  await apiRequest(`/api/admin/orders/${orderId}/active`, {
+    method: "PATCH",
+    body: {
+      active: Boolean(isActive)
+    }
+  });
+  await refreshAdminOrders();
+  await refreshOwnOrders();
+  renderAll();
+  setStatus("Статус активности обновлён.", "success");
+}
+
 async function updateAdminOrderStatus(orderId, field, value) {
   const payload = {};
 
@@ -1194,6 +1271,22 @@ function attachEvents() {
     }
   });
 
+  elements.ordersList.addEventListener("click", async (event) => {
+    const button = event.target.closest("[data-action]");
+
+    if (!button) {
+      return;
+    }
+
+    try {
+      if (button.dataset.action === "delete-own-order") {
+        await deleteOwnOrder(button.dataset.orderId);
+      }
+    } catch (error) {
+      setStatus(error.message, "error");
+    }
+  });
+
   elements.adminFilters.addEventListener("click", async (event) => {
     const button = event.target.closest("[data-admin-filter-key]");
 
@@ -1255,6 +1348,22 @@ function attachEvents() {
           button.dataset.statusValue
         );
       }
+    } catch (error) {
+      setStatus(error.message, "error");
+    }
+  });
+
+  elements.adminOrdersList.addEventListener("change", async (event) => {
+    const input = event.target.closest("input[data-action='admin-toggle-order-active']");
+
+    if (!input) {
+      return;
+    }
+
+    try {
+      await setAdminOrderActive(input.dataset.orderId, input.checked);
+      await refreshAdminOrders();
+      renderAdminOrders();
     } catch (error) {
       setStatus(error.message, "error");
     }
