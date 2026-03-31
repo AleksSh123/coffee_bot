@@ -230,6 +230,143 @@ function buildOrderContextBanner(label) {
   return `<div class="context-banner">${escapeHtml(formatOrderContextText(label))}</div>`;
 }
 
+const orderContextMonthNumbers = new Map([
+  ["января", 1],
+  ["январь", 1],
+  ["февраля", 2],
+  ["февраль", 2],
+  ["марта", 3],
+  ["март", 3],
+  ["апреля", 4],
+  ["апрель", 4],
+  ["мая", 5],
+  ["май", 5],
+  ["июня", 6],
+  ["июнь", 6],
+  ["июля", 7],
+  ["июль", 7],
+  ["августа", 8],
+  ["август", 8],
+  ["сентября", 9],
+  ["сентябрь", 9],
+  ["октября", 10],
+  ["октябрь", 10],
+  ["ноября", 11],
+  ["ноябрь", 11],
+  ["декабря", 12],
+  ["декабрь", 12]
+]);
+
+function buildValidUtcDate(year, month, day) {
+  const normalizedYear = Number(year);
+  const normalizedMonth = Number(month);
+  const normalizedDay = Number(day);
+
+  if (
+    !Number.isInteger(normalizedYear) ||
+    !Number.isInteger(normalizedMonth) ||
+    !Number.isInteger(normalizedDay)
+  ) {
+    return null;
+  }
+
+  const date = new Date(Date.UTC(normalizedYear, normalizedMonth - 1, normalizedDay));
+
+  if (
+    date.getUTCFullYear() !== normalizedYear ||
+    date.getUTCMonth() !== normalizedMonth - 1 ||
+    date.getUTCDate() !== normalizedDay
+  ) {
+    return null;
+  }
+
+  return date;
+}
+
+function normalizeOrderContextYear(yearText) {
+  const normalizedYearText = String(yearText ?? "").trim();
+
+  if (!normalizedYearText) {
+    return null;
+  }
+
+  const parsedYear = Number.parseInt(normalizedYearText, 10);
+
+  if (!Number.isInteger(parsedYear)) {
+    return null;
+  }
+
+  if (normalizedYearText.length === 2) {
+    return parsedYear >= 70 ? 1900 + parsedYear : 2000 + parsedYear;
+  }
+
+  return parsedYear;
+}
+
+function extractOrderContextDates(label) {
+  const normalizedLabel = typeof label === "string" ? label.trim().toLowerCase() : "";
+
+  if (!normalizedLabel) {
+    return [];
+  }
+
+  const dates = [];
+
+  for (const match of normalizedLabel.matchAll(/\b(\d{4})-(\d{2})-(\d{2})\b/g)) {
+    const date = buildValidUtcDate(match[1], match[2], match[3]);
+
+    if (date) {
+      dates.push(date);
+    }
+  }
+
+  for (const match of normalizedLabel.matchAll(/\b(\d{1,2})[./-](\d{1,2})(?:[./-](\d{2,4}))?\b/g)) {
+    const year = normalizeOrderContextYear(match[3] ?? new Date().getUTCFullYear());
+    const date = buildValidUtcDate(year, match[2], match[1]);
+
+    if (date) {
+      dates.push(date);
+    }
+  }
+
+  for (const match of normalizedLabel.matchAll(/\b(\d{1,2})\s+([а-яё]+)\s+(\d{2,4})\b/gi)) {
+    const month = orderContextMonthNumbers.get(match[2]);
+    const year = normalizeOrderContextYear(match[3]);
+    const date = month ? buildValidUtcDate(year, month, match[1]) : null;
+
+    if (date) {
+      dates.push(date);
+    }
+  }
+
+  return dates;
+}
+
+function getLatestOrderContextDate(label) {
+  const dates = extractOrderContextDates(label);
+
+  if (dates.length === 0) {
+    return null;
+  }
+
+  return dates.reduce((latestDate, date) => (date.getTime() > latestDate.getTime() ? date : latestDate));
+}
+
+function getSaturdayForOrderContextDate(date) {
+  const saturday = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const daysUntilSaturday = (6 - saturday.getUTCDay() + 7) % 7;
+  saturday.setUTCDate(saturday.getUTCDate() + daysUntilSaturday);
+  return saturday;
+}
+
+function getIsoWeekNumber(date) {
+  const normalizedDate = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const day = normalizedDate.getUTCDay() || 7;
+  normalizedDate.setUTCDate(normalizedDate.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(normalizedDate.getUTCFullYear(), 0, 1));
+  return Math.ceil((((normalizedDate - yearStart) / 86400000) + 1) / 7);
+}
+
 function capitalizeFirst(value) {
   return value ? value[0].toUpperCase() + value.slice(1) : value;
 }
@@ -245,7 +382,7 @@ function buildOrderContextSeed(value) {
   return seed;
 }
 
-function formatOrderContextId(orderContextKey) {
+function formatLegacyOrderContextId(orderContextKey) {
   const normalizedKey = typeof orderContextKey === "string" ? orderContextKey.trim() : "";
   const syllables = [
     "ta",
@@ -302,6 +439,17 @@ function formatOrderContextId(orderContextKey) {
   const suffix = seed[3].toString(16).padStart(2, "0").toUpperCase();
 
   return `${word}-${suffix}`;
+}
+
+function formatOrderContextName(orderContextKey, label) {
+  const latestOrderContextDate = getLatestOrderContextDate(label);
+
+  if (latestOrderContextDate) {
+    const saturday = getSaturdayForOrderContextDate(latestOrderContextDate);
+    return `Неделя-${getIsoWeekNumber(saturday)}`;
+  }
+
+  return formatLegacyOrderContextId(orderContextKey);
 }
 
 function getOrderContextStatusLabel(status) {
@@ -424,7 +572,6 @@ function buildAdminExportSummary(group) {
   });
 
   return {
-    activeOrdersCount: activeOrders.length,
     positions,
     totalAmount: Number(
       positions.reduce((sum, item) => Number((sum + item.totalAmount).toFixed(2)), 0)
@@ -434,9 +581,8 @@ function buildAdminExportSummary(group) {
 
 function buildAdminExportShareText(group, summary) {
   const lines = [
-    `Заказ ${formatOrderContextId(group.key)}`,
+    `Заказ ${formatOrderContextName(group.key, group.label)}`,
     formatOrderContextText(group.label),
-    `Активных заявок: ${summary.activeOrdersCount}`,
     `Позиций: ${summary.positions.length}`,
     ""
   ];
@@ -478,9 +624,9 @@ function renderAdminExportModal() {
 
   const summary = buildAdminExportSummary(group);
 
-  elements.adminExportTitle.textContent = `Заказ ${formatOrderContextId(group.key)}`;
+  elements.adminExportTitle.textContent = `Заказ ${formatOrderContextName(group.key, group.label)}`;
   elements.adminExportMeta.textContent =
-    `${formatOrderContextText(group.label)} · Активных заявок: ${summary.activeOrdersCount} · Позиций: ${summary.positions.length}`;
+    `${formatOrderContextText(group.label)} · Позиций: ${summary.positions.length}`;
   elements.adminExportList.innerHTML =
     summary.positions.length > 0
       ? summary.positions
@@ -513,7 +659,7 @@ async function shareAdminExport() {
   const summary = buildAdminExportSummary(group);
   const text = buildAdminExportShareText(group, summary);
   const sharePayload = {
-    title: `Заказ ${formatOrderContextId(group.key)}`,
+    title: `Заказ ${formatOrderContextName(group.key, group.label)}`,
     text
   };
 
@@ -1067,7 +1213,7 @@ function renderAdminOrders() {
             <div class="admin-order-group__summary">
               <div class="admin-order-group__header">
                 <div>
-                  <h3 class="admin-order-group__title">Заказ ${escapeHtml(formatOrderContextId(group.key))}</h3>
+                  <h3 class="admin-order-group__title">Заказ ${escapeHtml(formatOrderContextName(group.key, group.label))}</h3>
                   <div class="card-subtitle">${escapeHtml(formatOrderContextText(group.label))}</div>
                   <div class="admin-order-group__meta">
                     <span class="status-chip status-chip--order-context">${escapeHtml(getOrderContextStatusLabel(group.status))}</span>
