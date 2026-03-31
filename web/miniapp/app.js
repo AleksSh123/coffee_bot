@@ -3,6 +3,7 @@ const state = {
   adminFilters: {
     orderContextStatus: null
   },
+  adminExportOrderContextKey: null,
   authToken: null,
   catalog: null,
   categoryPath: [],
@@ -20,6 +21,13 @@ const elements = {
   adminOrdersList: document.querySelector("#admin-orders-list"),
   adminPanel: document.querySelector("#admin-panel"),
   adminRefreshButton: document.querySelector("#admin-refresh-button"),
+  adminExportCloseButton: document.querySelector("#admin-export-close-button"),
+  adminExportList: document.querySelector("#admin-export-list"),
+  adminExportMeta: document.querySelector("#admin-export-meta"),
+  adminExportModal: document.querySelector("#admin-export-modal"),
+  adminExportShareButton: document.querySelector("#admin-export-share-button"),
+  adminExportTitle: document.querySelector("#admin-export-title"),
+  adminExportTotal: document.querySelector("#admin-export-total"),
   catalogList: document.querySelector("#catalog-list"),
   catalogPanel: document.querySelector("#catalog-panel"),
   categoryFilters: document.querySelector("#category-filters"),
@@ -38,6 +46,16 @@ const elements = {
 
 const telegramWebApp = window.Telegram?.WebApp ?? null;
 const apiBasePath = "";
+const promotionsSupercategoryId = "__promotions__";
+const promotionsSupercategoryLabel = "Акционные товары";
+const promotionLabelNames = new Set(
+  [
+    "Акционный сорт",
+    "Сорт недели",
+    "Сорт месяца",
+    "Микролот недели"
+  ].map((label) => label.toLowerCase())
+);
 
 function applyTelegramTheme() {
   const root = document.documentElement;
@@ -131,6 +149,36 @@ function getDisplayName(user) {
   }
 
   return user.username ? `@${user.username}` : `Telegram ID ${user.telegramUserId}`;
+}
+
+function normalizeLabelName(value) {
+  return typeof value === "string" ? value.trim().toLowerCase() : "";
+}
+
+function isPromotionalItem(item) {
+  return promotionLabelNames.has(normalizeLabelName(item?.labelName));
+}
+
+function getOfferWeight(offer) {
+  const weight = Number(offer?.weight);
+  return Number.isFinite(weight) && weight > 0 ? weight : 0;
+}
+
+function sortOffersByWeightDesc(offers = []) {
+  return [...offers].sort((left, right) => {
+    const normalizedLeftWeight = getOfferWeight(left);
+    const normalizedRightWeight = getOfferWeight(right);
+
+    if (normalizedRightWeight !== normalizedLeftWeight) {
+      return normalizedRightWeight - normalizedLeftWeight;
+    }
+
+    return String(left?.name ?? "").localeCompare(String(right?.name ?? ""), "ru-RU");
+  });
+}
+
+function getItemPrimaryOfferWeight(item) {
+  return getOfferWeight(sortOffersByWeightDesc(item?.offers)[0]);
 }
 
 function formatOrderItemVariant(item) {
@@ -343,6 +391,153 @@ function groupAdminOrdersByContext(orders) {
   return groups;
 }
 
+function getAdminOrderGroup(orderContextKey) {
+  return groupAdminOrdersByContext(state.adminOrders).find((group) => group.key === orderContextKey) ?? null;
+}
+
+function buildAdminExportSummary(group) {
+  const itemsByKey = new Map();
+  const activeOrders = group.orders.filter((order) => order.isActive);
+
+  for (const order of activeOrders) {
+    for (const item of order.items) {
+      const itemKey = item.offerKey || `${item.productName}|${item.offerName}|${item.weight}|${item.offerType}`;
+      const existingItem = itemsByKey.get(itemKey);
+
+      if (existingItem) {
+        existingItem.quantity += item.quantity;
+        existingItem.totalAmount = Number((existingItem.totalAmount + item.lineTotal).toFixed(2));
+        continue;
+      }
+
+      itemsByKey.set(itemKey, {
+        key: itemKey,
+        title: formatOrderItemVariant(item),
+        quantity: item.quantity,
+        totalAmount: Number(item.lineTotal)
+      });
+    }
+  }
+
+  const positions = [...itemsByKey.values()].sort((left, right) => {
+    return String(left.title ?? "").localeCompare(String(right.title ?? ""), "ru-RU");
+  });
+
+  return {
+    activeOrdersCount: activeOrders.length,
+    positions,
+    totalAmount: Number(
+      positions.reduce((sum, item) => Number((sum + item.totalAmount).toFixed(2)), 0)
+    )
+  };
+}
+
+function buildAdminExportShareText(group, summary) {
+  const lines = [
+    `Заказ ${formatOrderContextId(group.key)}`,
+    formatOrderContextText(group.label),
+    `Активных заявок: ${summary.activeOrdersCount}`,
+    `Позиций: ${summary.positions.length}`,
+    ""
+  ];
+
+  if (summary.positions.length === 0) {
+    lines.push("В заказе нет активных позиций.");
+  } else {
+    for (const item of summary.positions) {
+      lines.push(`${item.title} - ${item.quantity} шт`);
+    }
+  }
+
+  lines.push("");
+  lines.push(`Итого: ${formatPrice(summary.totalAmount)}`);
+
+  return lines.join("\n");
+}
+
+function closeAdminExportModal() {
+  state.adminExportOrderContextKey = null;
+  renderAdminExportModal();
+}
+
+function openAdminExportModal(orderContextKey) {
+  state.adminExportOrderContextKey = orderContextKey;
+  renderAdminExportModal();
+}
+
+function renderAdminExportModal() {
+  const group = state.adminExportOrderContextKey
+    ? getAdminOrderGroup(state.adminExportOrderContextKey)
+    : null;
+
+  if (!group) {
+    elements.adminExportModal.classList.add("is-hidden");
+    document.body.classList.remove("has-modal-open");
+    return;
+  }
+
+  const summary = buildAdminExportSummary(group);
+
+  elements.adminExportTitle.textContent = `Заказ ${formatOrderContextId(group.key)}`;
+  elements.adminExportMeta.textContent =
+    `${formatOrderContextText(group.label)} · Активных заявок: ${summary.activeOrdersCount} · Позиций: ${summary.positions.length}`;
+  elements.adminExportList.innerHTML =
+    summary.positions.length > 0
+      ? summary.positions
+          .map(
+            (item) => `
+              <div class="export-summary-row">
+                <div class="export-summary-row__main">
+                  <div class="export-summary-row__title">${escapeHtml(item.title)}</div>
+                </div>
+                <div class="export-summary-row__qty">- ${escapeHtml(String(item.quantity))} шт</div>
+              </div>
+            `
+          )
+          .join("")
+      : '<div class="empty-state">В этом заказе нет активных позиций для экспорта.</div>';
+  elements.adminExportTotal.textContent = `Итого: ${formatPrice(summary.totalAmount)}`;
+  elements.adminExportModal.classList.remove("is-hidden");
+  document.body.classList.add("has-modal-open");
+}
+
+async function shareAdminExport() {
+  const group = state.adminExportOrderContextKey
+    ? getAdminOrderGroup(state.adminExportOrderContextKey)
+    : null;
+
+  if (!group) {
+    return;
+  }
+
+  const summary = buildAdminExportSummary(group);
+  const text = buildAdminExportShareText(group, summary);
+  const sharePayload = {
+    title: `Заказ ${formatOrderContextId(group.key)}`,
+    text
+  };
+
+  if (navigator.share) {
+    try {
+      await navigator.share(sharePayload);
+      setStatus("Сводка заказа отправлена.", "success");
+      return;
+    } catch (error) {
+      if (error?.name === "AbortError") {
+        return;
+      }
+    }
+  }
+
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    setStatus("Сводка заказа скопирована в буфер обмена.", "success");
+    return;
+  }
+
+  setStatus("Не удалось открыть меню отправки или скопировать сводку.", "error");
+}
+
 function getOrderItemByOfferKey(offerKey) {
   return state.draftOrder?.items?.find((item) => item.offerKey === offerKey) ?? null;
 }
@@ -375,6 +570,11 @@ function getSelectedCategoryNode(levelIndex = state.categoryPath.length - 1) {
   }
 
   const categoryId = state.categoryPath[levelIndex];
+
+  if (categoryId === promotionsSupercategoryId) {
+    return null;
+  }
+
   return categoryId ? state.catalog.categoryNodesById.get(categoryId) ?? null : null;
 }
 
@@ -389,6 +589,11 @@ function getActiveBranchCategoryIds() {
 }
 
 function syncCategoryPath() {
+  if (state.categoryPath[0] === promotionsSupercategoryId) {
+    state.categoryPath = [promotionsSupercategoryId];
+    return;
+  }
+
   if (!state.catalog?.categoryNodesById || state.categoryPath.length === 0) {
     state.categoryPath = [];
     return;
@@ -489,6 +694,10 @@ function renderCategoryFilters() {
           id: null,
           label: "Все товары"
         },
+        {
+          id: promotionsSupercategoryId,
+          label: promotionsSupercategoryLabel
+        },
         ...categoryTree.map((category) => ({
           id: category.id,
           label: category.name
@@ -554,24 +763,49 @@ function renderCatalog() {
     return;
   }
 
+  const isPromotionsSelected = state.categoryPath[0] === promotionsSupercategoryId;
   const activeBranchCategoryIds = getActiveBranchCategoryIds();
-  const filteredItems = state.catalog.items.filter((item) => {
-    if (!activeBranchCategoryIds) {
-      return true;
-    }
+  const filteredItems = state.catalog.items
+    .filter((item) => {
+      if (isPromotionsSelected) {
+        return isPromotionalItem(item);
+      }
 
-    return activeBranchCategoryIds.has(String(item.categoryId ?? ""));
-  });
+      if (!activeBranchCategoryIds) {
+        return true;
+      }
+
+      return activeBranchCategoryIds.has(String(item.categoryId ?? ""));
+    })
+    .map((item, index) => ({ item, index }))
+    .sort((left, right) => {
+      if (left.item.categoryId !== right.item.categoryId) {
+        return left.index - right.index;
+      }
+
+      const weightDiff = getItemPrimaryOfferWeight(right.item) - getItemPrimaryOfferWeight(left.item);
+
+      if (weightDiff !== 0) {
+        return weightDiff;
+      }
+
+      return String(left.item.name ?? "").localeCompare(String(right.item.name ?? ""), "ru-RU");
+    })
+    .map(({ item }) => item);
 
   if (filteredItems.length === 0) {
     elements.catalogList.innerHTML =
-      '<div class="empty-state">В выбранной категории нет доступных позиций.</div>';
+      `<div class="empty-state">${
+        isPromotionsSelected
+          ? "Сейчас в каталоге нет акционных товаров."
+          : "В выбранной категории нет доступных позиций."
+      }</div>`;
     return;
   }
 
   elements.catalogList.innerHTML = filteredItems
     .map((item) => {
-      const offerRows = item.offers
+      const offerRows = sortOffersByWeightDesc(item.offers)
         .map((offer) => {
           const existingOrderItem = getOrderItemByOfferKey(offer.offerKey);
           const quantity = existingOrderItem?.quantity ?? 1;
@@ -853,6 +1087,9 @@ function renderAdminOrders() {
               ${buildOrderContextStatusButton(group, "sent", "Отправлен")}
               ${buildOrderContextStatusButton(group, "closed", "Закрыт")}
             </div>
+            <button class="ghost-button admin-order-group__export" type="button" data-action="open-admin-export" data-order-context-key="${escapeHtml(group.key)}">
+              Экспорт заказа
+            </button>
           </div>
           <div class="admin-order-group__toggle-row">
             <button class="ghost-button admin-order-group__toggle" type="button" data-action="toggle-order-context" data-order-context-key="${escapeHtml(group.key)}">
@@ -932,6 +1169,7 @@ function renderAll() {
   renderOrders();
   renderAdminFilters();
   renderAdminOrders();
+  renderAdminExportModal();
   setActiveTab(state.activeTab);
 }
 
@@ -1346,6 +1584,11 @@ function attachEvents() {
         return;
       }
 
+      if (button.dataset.action === "open-admin-export") {
+        openAdminExportModal(button.dataset.orderContextKey);
+        return;
+      }
+
       if (button.dataset.action === "admin-update-order-context-status") {
         await updateAdminOrderContextStatus(
           button.dataset.orderContextKey,
@@ -1408,6 +1651,28 @@ function attachEvents() {
       await submitDraftOrder();
     } catch (error) {
       setStatus(error.message, "error");
+    }
+  });
+
+  elements.adminExportModal.addEventListener("click", (event) => {
+    const actionButton = event.target.closest("[data-action]");
+
+    if (actionButton?.dataset.action === "close-admin-export" || event.target === elements.adminExportModal) {
+      closeAdminExportModal();
+    }
+  });
+
+  elements.adminExportShareButton.addEventListener("click", async () => {
+    try {
+      await shareAdminExport();
+    } catch (error) {
+      setStatus(error.message, "error");
+    }
+  });
+
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape" && state.adminExportOrderContextKey) {
+      closeAdminExportModal();
     }
   });
 }
