@@ -1,3 +1,5 @@
+import { formatError } from "./errors.js";
+
 const sensitiveKeys = new Set([
   "access_token",
   "authorization",
@@ -59,12 +61,45 @@ function sanitizeForLogs(value, depth = 0) {
   return result;
 }
 
+function sanitizeUrlForLogs(url) {
+  const rawUrl = String(url);
+
+  try {
+    const parsedUrl = new URL(rawUrl);
+
+    if (parsedUrl.username) {
+      parsedUrl.username = "[REDACTED]";
+    }
+
+    if (parsedUrl.password) {
+      parsedUrl.password = "[REDACTED]";
+    }
+
+    for (const key of new Set(parsedUrl.searchParams.keys())) {
+      if (sensitiveKeys.has(key.toLowerCase())) {
+        parsedUrl.searchParams.set(key, "[REDACTED]");
+      }
+    }
+
+    if (parsedUrl.hostname === "api.telegram.org") {
+      parsedUrl.pathname = parsedUrl.pathname.replace(/^\/bot[^/]+/, "/bot[REDACTED]");
+    }
+
+    return parsedUrl.toString();
+  } catch {
+    return rawUrl.replace(
+      /(https?:\/\/api\.telegram\.org\/bot)[^/]+/i,
+      "$1[REDACTED]"
+    );
+  }
+}
+
 function buildRequestLogRecord({ requestId, context, method, url, headers, body }) {
   return {
     request_id: requestId,
     context,
     method,
-    url,
+    url: sanitizeUrlForLogs(url),
     headers: sanitizeForLogs(headers),
     body: sanitizeForLogs(body)
   };
@@ -83,7 +118,7 @@ function buildResponseLogRecord({
     request_id: requestId,
     context,
     method,
-    url,
+    url: sanitizeUrlForLogs(url),
     status,
     duration_ms: durationMs,
     payload: sanitizeForLogs(payload)
@@ -149,7 +184,7 @@ export async function fetchJson(
     });
 
     if (!response.ok) {
-      logger?.error("http.request.failed", responseLogRecord);
+      logHttpLifecycle(logger, "error", "http.request.failed", responseLogRecord);
       const details = typeof payload === "string" ? payload : JSON.stringify(payload);
       const error = new Error(`Request failed: ${response.status} ${details}`);
       error.status = response.status;
@@ -160,13 +195,13 @@ export async function fetchJson(
     return payload;
   } catch (error) {
     if (error?.status === undefined) {
-      logger?.error("http.request.failed", {
+      logHttpLifecycle(logger, "error", "http.request.failed", {
         request_id: requestId,
         context: logContext,
         method,
-        url,
+        url: sanitizeUrlForLogs(url),
         duration_ms: Date.now() - startedAt,
-        error: error instanceof Error ? error.message : String(error)
+        error: formatError(error)
       });
     }
 
