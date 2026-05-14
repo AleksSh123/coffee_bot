@@ -209,7 +209,11 @@ function formatOrderItemVariant(item) {
 }
 
 function formatOrderItemPricing(item) {
-  return `Количество: ${item.quantity} · Цена: ${formatPrice(item.price)}/шт`;
+  const lineTotal = Number.isFinite(Number(item.lineTotal))
+    ? Number(item.lineTotal)
+    : Number(item.price) * Number(item.quantity);
+
+  return `Количество: ${item.quantity} · Цена: ${formatPrice(item.price)}/шт · Сумма: ${formatPrice(lineTotal)}`;
 }
 
 function getCurrentOrderContextLabel() {

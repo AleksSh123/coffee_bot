@@ -139,6 +139,14 @@ function parseCommaSeparatedList(value) {
     .filter(Boolean);
 }
 
+function parseCommaSeparatedPositionList(value) {
+  if (value === undefined || value.trim() === "") {
+    return [];
+  }
+
+  return value.split(",").map((entry) => entry.trim());
+}
+
 function parseScheduleTime(value, fallback = "monday 09:00") {
   const normalizedValue = value?.trim() || fallback;
   const match = /^(\S+)\s+([01]\d|2[0-3]):([0-5]\d)$/.exec(normalizedValue);
@@ -234,8 +242,8 @@ export function loadConfig() {
   const promotionsScheduleTime = parseScheduleTime(process.env.PROMOTIONS_SCHEDULE_TIME);
   const promotionsScheduleTimeZone =
     process.env.PROMOTIONS_SCHEDULE_TIMEZONE ?? "Asia/Krasnoyarsk";
-  const promotionsChannelId = process.env.PROMOTIONS_CHANNEL_ID?.trim() ?? "";
-  const alertUsername = process.env.ALERT_USERNAME?.trim() ?? "";
+  const promotionsChannelIds = parseCommaSeparatedList(process.env.PROMOTIONS_CHANNEL_ID);
+  const alertUsernames = parseCommaSeparatedPositionList(process.env.ALERT_USERNAME);
   const logFilePath = trimToNull(process.env.LOG_FILE_PATH);
   const echoTelegramMessages = parseBoolean(
     process.env.LOG_TELEGRAM_MESSAGES,
@@ -294,9 +302,9 @@ export function loadConfig() {
       privacyAgreement: parseBoolean(process.env.TASTY_PRIVACY_AGREEMENT ?? "true", true)
     },
     promotionsSchedule: {
-      enabled: promotionsChannelId.length > 0,
-      alertUsername,
-      channelId: promotionsChannelId,
+      enabled: promotionsChannelIds.length > 0,
+      alertUsernames,
+      channelIds: promotionsChannelIds,
       weekday: promotionsScheduleTime.weekday,
       weekdayLabel: promotionsScheduleTime.weekdayLabel,
       timeLabel: promotionsScheduleTime.timeLabel,

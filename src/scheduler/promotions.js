@@ -16,7 +16,8 @@ const isoWeekdayByShortLabel = {
 function loadSchedulerState(stateFilePath) {
   if (!existsSync(stateFilePath)) {
     return {
-      lastPublishedSlotKey: null
+      lastPublishedSlotKey: null,
+      publishedSlotKeysByChannel: {}
     };
   }
 
@@ -25,11 +26,18 @@ function loadSchedulerState(stateFilePath) {
     const parsedState = JSON.parse(rawState);
 
     return {
-      lastPublishedSlotKey: parsedState?.lastPublishedSlotKey ?? null
+      lastPublishedSlotKey: parsedState?.lastPublishedSlotKey ?? null,
+      publishedSlotKeysByChannel:
+        parsedState?.publishedSlotKeysByChannel &&
+        typeof parsedState.publishedSlotKeysByChannel === "object" &&
+        !Array.isArray(parsedState.publishedSlotKeysByChannel)
+          ? parsedState.publishedSlotKeysByChannel
+          : {}
     };
   } catch {
     return {
-      lastPublishedSlotKey: null
+      lastPublishedSlotKey: null,
+      publishedSlotKeysByChannel: {}
     };
   }
 }
@@ -48,7 +56,7 @@ function getCurrentTimeParts(timeZone, date = new Date()) {
     weekday: "short",
     hour: "2-digit",
     minute: "2-digit",
-    hour12: false
+    hourCycle: "h23"
   });
 
   const parts = Object.fromEntries(
@@ -61,7 +69,7 @@ function getCurrentTimeParts(timeZone, date = new Date()) {
   return {
     dateKey: `${parts.year}-${parts.month}-${parts.day}`,
     weekday: isoWeekdayByShortLabel[parts.weekday],
-    hour: Number.parseInt(parts.hour, 10),
+    hour: Number.parseInt(parts.hour, 10) % 24,
     minute: Number.parseInt(parts.minute, 10)
   };
 }
@@ -117,15 +125,32 @@ export function createPromotionsScheduler({
     );
   }
 
-  function wasPublished(slotKey) {
-    return schedulerState.lastPublishedSlotKey === slotKey;
+  function wasPublished(channelId, slotKey) {
+    return schedulerState.publishedSlotKeysByChannel[channelId] === slotKey;
   }
 
-  function markPublished(slotKey) {
+  function markPublished(channelId, slotKey) {
+    const publishedSlotKeysByChannel = {
+      ...schedulerState.publishedSlotKeysByChannel,
+      [channelId]: slotKey
+    };
+
     schedulerState = {
-      lastPublishedSlotKey: slotKey
+      lastPublishedSlotKey: scheduleConfig.channelIds.every(
+        (configuredChannelId) => publishedSlotKeysByChannel[configuredChannelId] === slotKey
+      )
+        ? slotKey
+        : schedulerState.lastPublishedSlotKey,
+      publishedSlotKeysByChannel
     };
     saveSchedulerState(scheduleConfig.stateFilePath, schedulerState);
+  }
+
+  function getChannelEntries() {
+    return scheduleConfig.channelIds.map((channelId, index) => ({
+      channelId,
+      alertUsername: scheduleConfig.alertUsernames[index] ?? ""
+    }));
   }
 
   async function publishIfDue(date = new Date()) {
@@ -135,40 +160,48 @@ export function createPromotionsScheduler({
 
     const slotKey = getSlotKey(date);
 
-    if (wasPublished(slotKey)) {
+    const pendingChannelEntries = getChannelEntries().filter(
+      ({ channelId }) => !wasPublished(channelId, slotKey)
+    );
+
+    if (pendingChannelEntries.length === 0) {
       return;
     }
 
     if (!publishPromise) {
       publishPromise = (async () => {
         try {
-          const wasSent = await sendCatalogByButton(
-            {
-              id: scheduleConfig.channelId,
-              type: "channel"
-            },
-            promotionsButtonLabel,
-            {
-              forceRefresh: true,
-              messagePrefix: buildScheduledGreeting(scheduleConfig.alertUsername)
+          for (const { channelId, alertUsername } of pendingChannelEntries) {
+            try {
+              const wasSent = await sendCatalogByButton(
+                {
+                  id: channelId,
+                  type: "channel"
+                },
+                promotionsButtonLabel,
+                {
+                  forceRefresh: true,
+                  messagePrefix: buildScheduledGreeting(alertUsername)
+                }
+              );
+
+              if (!wasSent) {
+                throw new Error("Promotions button configuration is not available");
+              }
+
+              markPublished(channelId, slotKey);
+              logger.info("promotions.scheduler.published", {
+                channel_id: channelId,
+                slot_key: slotKey
+              });
+            } catch (error) {
+              logger.error("promotions.scheduler.failed", {
+                channel_id: channelId,
+                slot_key: slotKey,
+                error: formatError(error)
+              });
             }
-          );
-
-          if (!wasSent) {
-            throw new Error("Promotions button configuration is not available");
           }
-
-          markPublished(slotKey);
-          logger.info("promotions.scheduler.published", {
-            channel_id: scheduleConfig.channelId,
-            slot_key: slotKey
-          });
-        } catch (error) {
-          logger.error("promotions.scheduler.failed", {
-            channel_id: scheduleConfig.channelId,
-            slot_key: slotKey,
-            error: formatError(error)
-          });
         } finally {
           publishPromise = null;
         }
@@ -185,7 +218,7 @@ export function createPromotionsScheduler({
     }
 
     logger.info("promotions.scheduler.started", {
-      channel_id: scheduleConfig.channelId,
+      channel_ids: scheduleConfig.channelIds,
       schedule_label: scheduleConfig.scheduleLabel,
       time_zone: scheduleConfig.timeZone,
       check_interval_ms: scheduleConfig.checkIntervalMs
