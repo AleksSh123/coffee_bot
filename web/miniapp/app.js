@@ -208,6 +208,21 @@ function formatOrderItemVariant(item) {
   return "вариант не указан";
 }
 
+function formatAdminExportItemTitle(item) {
+  const productName = typeof item.productName === "string" ? item.productName.trim() : "";
+  const details = [formatWeight(item.weight), formatOfferType(item.offerType)].filter(Boolean);
+
+  if (productName && details.length > 0) {
+    return `${productName} · ${details.join(" · ")}`;
+  }
+
+  if (productName) {
+    return productName;
+  }
+
+  return details.join(" · ") || "позиция без названия";
+}
+
 function formatOrderItemPricing(item) {
   const lineTotal = Number.isFinite(Number(item.lineTotal))
     ? Number(item.lineTotal)
@@ -564,7 +579,7 @@ function buildAdminExportSummary(group) {
 
       itemsByKey.set(itemKey, {
         key: itemKey,
-        title: formatOrderItemVariant(item),
+        title: formatAdminExportItemTitle(item),
         quantity: item.quantity,
         totalAmount: Number(item.lineTotal)
       });
