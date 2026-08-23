@@ -2,5 +2,6 @@
 node_modules
 .runtime
 logs
+db_storage
 coffee_bot.code-workspace
 .DS_Store

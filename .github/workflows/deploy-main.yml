@@ -8,15 +8,18 @@ on:
 
 concurrency:
   group: deploy-main
-  cancel-in-progress: true
+  cancel-in-progress: false
+
+permissions:
+  contents: read
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     env:
       DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
       DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
-      DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
       DEPLOY_PORT: ${{ secrets.DEPLOY_PORT }}
       DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
       DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
@@ -28,7 +31,6 @@ jobs:
           required_vars="
           DEPLOY_HOST
           DEPLOY_KNOWN_HOSTS
-          DEPLOY_PATH
           DEPLOY_SSH_KEY
           DEPLOY_USER
           "
@@ -54,13 +56,11 @@ jobs:
           set -eu
 
           deploy_port="${DEPLOY_PORT:-22}"
-
-          ssh -i "$HOME/.ssh/id_ed25519" -o BatchMode=yes -p "$deploy_port" "$DEPLOY_USER@$DEPLOY_HOST" <<EOF
-          set -eu
-          cd "$DEPLOY_PATH"
-          git fetch origin main
-          git checkout main
-          git pull --ff-only origin main
-          docker compose up -d --build
-          docker compose ps
-          EOF
+          ssh \
+            -i "$HOME/.ssh/id_ed25519" \
+            -o BatchMode=yes \
+            -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes \
+            -p "$deploy_port" \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            deploy

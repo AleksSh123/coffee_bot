@@ -154,10 +154,12 @@ docker compose up --build -d
 ## Автодеплой через GitHub Actions
 
 В репозитории есть workflow [`.github/workflows/deploy-main.yml`](/Users/alex/Documents/DEVELOPMENT/Git-Projects/coffee_bot/.github/workflows/deploy-main.yml), который запускается при каждом `push` в ветку `main` и по `workflow_dispatch`.
-Workflow подключается к серверу по SSH, делает `git pull --ff-only origin main` в каталоге проекта и затем выполняет:
+Workflow подключается к серверу по отдельному ограниченному SSH-ключу. Этот ключ может запускать только установленный на сервере deploy-скрипт, который обновляет ветку `main` в `/opt/coffee_bot`, проверяет Compose, пересобирает сервис и ожидает успешного healthcheck.
+
+Основная команда переразвертывания:
 
 ```bash
-docker compose up -d --build
+docker compose up -d --build --remove-orphans --wait --wait-timeout 180
 ```
 
 Чтобы он работал, на сервере должно быть уже подготовлено:
@@ -172,9 +174,10 @@ docker compose up -d --build
 - `DEPLOY_HOST` - hostname или IP сервера
 - `DEPLOY_PORT` - SSH-порт, если не `22`
 - `DEPLOY_USER` - SSH-пользователь
-- `DEPLOY_PATH` - абсолютный путь к каталогу проекта на сервере
-- `DEPLOY_SSH_KEY` - приватный SSH-ключ, которым GitHub Actions будет входить на сервер
+- `DEPLOY_SSH_KEY` - приватная часть отдельного ограниченного deploy-ключа
 - `DEPLOY_KNOWN_HOSTS` - содержимое `known_hosts` для сервера
+
+Публичная часть deploy-ключа добавляется в `/root/.ssh/authorized_keys` с `restrict` и принудительной командой `/usr/local/sbin/deploy-coffee-bot`. Версионируемый исходник серверного скрипта находится в `.github/deploy/coffee-bot-deploy.sh`.
 
 `DEPLOY_KNOWN_HOSTS` удобно получить так:
 

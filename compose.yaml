@@ -14,21 +14,21 @@ services:
       HTTP_PORT: 3000
       LOG_FILE_PATH: /app/logs/app.log
     ports:
-      - "3000:3000"
+      - "172.22.1.1:3001:3000"
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - fetch('http://127.0.0.1:3000/api/health').then((response)=>{if(!response.ok)process.exit(1)}).catch(()=>process.exit(1))
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
     restart: unless-stopped
     volumes:
-      - /var/log/coffee-bot:/app/logs
-    networks:
-      - default
-      - traefik-public
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=traefik-public
-      - traefik.http.routers.coffee-bot.rule=Host(`miniapp.dragonzzz.ru`)
-      - traefik.http.routers.coffee-bot.entrypoints=web,websecure
-      - traefik.http.routers.coffee-bot.tls=true
-      - traefik.http.routers.coffee-bot.tls.certresolver=mytlschallenge
-      - traefik.http.services.coffee-bot.loadbalancer.server.port=3000
+      - ./logs:/app/logs
+      - ./.runtime:/app/.runtime
   db:
     image: postgres:16-alpine
     container_name: coffee-bot-db
@@ -43,10 +43,4 @@ services:
       retries: 5
     restart: unless-stopped
     volumes:
-      - coffee-bot-db:/var/lib/postgresql/data
-
-volumes:
-  coffee-bot-db:
-networks:
-  traefik-public:
-    external: true
+      - ./db_storage:/var/lib/postgresql/data
