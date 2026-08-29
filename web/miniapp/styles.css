@@ -1015,8 +1015,53 @@ button {
 
 .export-summary-list {
   display: grid;
-  gap: 10px;
+  gap: 14px;
   margin-top: 16px;
+}
+
+.export-customer {
+  overflow: hidden;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.export-customer__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-muted);
+}
+
+.export-customer__name {
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.4;
+  color: var(--text);
+}
+
+.export-customer__meta {
+  margin-top: 3px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.export-customer__total {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.export-customer__items {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
 }
 
 .export-summary-row {
@@ -1123,6 +1168,11 @@ button {
 
   .export-summary-row {
     grid-template-columns: 1fr;
+  }
+
+  .export-customer__header {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .export-summary-row__qty,

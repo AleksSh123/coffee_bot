@@ -563,13 +563,29 @@ function getAdminOrderGroup(orderContextKey) {
 }
 
 function buildAdminExportSummary(group) {
-  const itemsByKey = new Map();
+  const customersByKey = new Map();
   const activeOrders = group.orders.filter((order) => order.isActive);
 
   for (const order of activeOrders) {
+    const customerKey = order.user?.id
+      ? `user:${order.user.id}`
+      : order.user?.telegramUserId
+        ? `telegram:${order.user.telegramUserId}`
+        : `order:${order.id}`;
+    let customer = customersByKey.get(customerKey);
+
+    if (!customer) {
+      customer = {
+        key: customerKey,
+        name: order.user ? getDisplayName(order.user) : "Пользователь неизвестен",
+        itemsByKey: new Map()
+      };
+      customersByKey.set(customerKey, customer);
+    }
+
     for (const item of order.items) {
       const itemKey = item.offerKey || `${item.productName}|${item.offerName}|${item.weight}|${item.offerType}`;
-      const existingItem = itemsByKey.get(itemKey);
+      const existingItem = customer.itemsByKey.get(itemKey);
 
       if (existingItem) {
         existingItem.quantity += item.quantity;
@@ -577,7 +593,7 @@ function buildAdminExportSummary(group) {
         continue;
       }
 
-      itemsByKey.set(itemKey, {
+      customer.itemsByKey.set(itemKey, {
         key: itemKey,
         title: formatAdminExportItemTitle(item),
         quantity: item.quantity,
@@ -586,14 +602,35 @@ function buildAdminExportSummary(group) {
     }
   }
 
-  const positions = [...itemsByKey.values()].sort((left, right) => {
-    return String(left.title ?? "").localeCompare(String(right.title ?? ""), "ru-RU");
-  });
+  const customers = [...customersByKey.values()]
+    .map((customer) => {
+      const positions = [...customer.itemsByKey.values()].sort((left, right) => {
+        return String(left.title ?? "").localeCompare(String(right.title ?? ""), "ru-RU");
+      });
+
+      return {
+        key: customer.key,
+        name: customer.name,
+        positions,
+        totalAmount: Number(
+          positions.reduce((sum, item) => Number((sum + item.totalAmount).toFixed(2)), 0)
+        )
+      };
+    })
+    .sort((left, right) => left.name.localeCompare(right.name, "ru-RU"));
+  const positionsCount = customers.reduce(
+    (sum, customer) => sum + customer.positions.length,
+    0
+  );
 
   return {
-    positions,
+    customers,
+    positionsCount,
     totalAmount: Number(
-      positions.reduce((sum, item) => Number((sum + item.totalAmount).toFixed(2)), 0)
+      customers.reduce(
+        (sum, customer) => Number((sum + customer.totalAmount).toFixed(2)),
+        0
+      )
     )
   };
 }
@@ -602,20 +639,27 @@ function buildAdminExportShareText(group, summary) {
   const lines = [
     `Заказ ${formatOrderContextName(group.key, group.label)}`,
     formatOrderContextText(group.label),
-    `Позиций: ${summary.positions.length}`,
+    `Заказчиков: ${summary.customers.length}`,
+    `Позиций: ${summary.positionsCount}`,
     ""
   ];
 
-  if (summary.positions.length === 0) {
+  if (summary.customers.length === 0) {
     lines.push("В заказе нет активных позиций.");
   } else {
-    for (const item of summary.positions) {
-      lines.push(`${item.title} - ${item.quantity} шт`);
+    for (const customer of summary.customers) {
+      lines.push(`Заказчик: ${customer.name}`);
+
+      for (const item of customer.positions) {
+        lines.push(`${item.title} - ${item.quantity} шт`);
+      }
+
+      lines.push(`Итого заказчика: ${formatPrice(customer.totalAmount)}`);
+      lines.push("");
     }
   }
 
-  lines.push("");
-  lines.push(`Итого: ${formatPrice(summary.totalAmount)}`);
+  lines.push(`Общий итог: ${formatPrice(summary.totalAmount)}`);
 
   return lines.join("\n");
 }
@@ -645,18 +689,35 @@ function renderAdminExportModal() {
 
   elements.adminExportTitle.textContent = `Заказ ${formatOrderContextName(group.key, group.label)}`;
   elements.adminExportMeta.textContent =
-    `${formatOrderContextText(group.label)} · Позиций: ${summary.positions.length}`;
+    `${formatOrderContextText(group.label)} · Заказчиков: ${summary.customers.length} · Позиций: ${summary.positionsCount}`;
   elements.adminExportList.innerHTML =
-    summary.positions.length > 0
-      ? summary.positions
+    summary.customers.length > 0
+      ? summary.customers
           .map(
-            (item) => `
-              <div class="export-summary-row">
-                <div class="export-summary-row__main">
-                  <div class="export-summary-row__title">${escapeHtml(item.title)}</div>
+            (customer) => `
+              <section class="export-customer">
+                <div class="export-customer__header">
+                  <div>
+                    <div class="export-customer__name">${escapeHtml(customer.name)}</div>
+                    <div class="export-customer__meta">Позиций: ${escapeHtml(String(customer.positions.length))}</div>
+                  </div>
+                  <div class="export-customer__total">${escapeHtml(formatPrice(customer.totalAmount))}</div>
                 </div>
-                <div class="export-summary-row__qty">- ${escapeHtml(String(item.quantity))} шт</div>
-              </div>
+                <div class="export-customer__items">
+                  ${customer.positions
+                    .map(
+                      (item) => `
+                        <div class="export-summary-row">
+                          <div class="export-summary-row__main">
+                            <div class="export-summary-row__title">${escapeHtml(item.title)}</div>
+                          </div>
+                          <div class="export-summary-row__qty">- ${escapeHtml(String(item.quantity))} шт</div>
+                        </div>
+                      `
+                    )
+                    .join("")}
+                </div>
+              </section>
             `
           )
           .join("")
