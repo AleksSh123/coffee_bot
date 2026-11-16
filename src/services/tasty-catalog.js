@@ -1,3 +1,4 @@
+import { filterAvailableCatalogItems } from "../catalog/availability.js";
 import { buildCategoryTree } from "../catalog/category-tree.js";
 import { buildCatalogMessagesWithTitle } from "../catalog/formatters.js";
 import { defaultCatalogTitle } from "../config/constants.js";
@@ -90,7 +91,7 @@ export function createCatalogService({ state, config, authService, fetchJson, lo
       throw new Error("Tasty Coffee catalog response did not include a product array");
     }
 
-    return items;
+    return filterAvailableCatalogItems(items);
   }
 
   async function fetchCatalogData() {
