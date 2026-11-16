@@ -67,6 +67,11 @@ const schemaStatements = [
       OR is_active IS NULL
   `,
   `
+    UPDATE orders
+    SET is_active = FALSE, updated_at = NOW()
+    WHERE lifecycle_status = 'cancelled' AND is_active = TRUE
+  `,
+  `
     ALTER TABLE orders
     ALTER COLUMN order_context_key SET NOT NULL
   `,

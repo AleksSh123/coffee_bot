@@ -527,6 +527,10 @@ function groupAdminOrdersByContext(orders) {
   const groupsByKey = new Map();
 
   for (const order of orders) {
+    if (order.lifecycleStatus !== "submitted") {
+      continue;
+    }
+
     const groupKey = typeof order.orderContextKey === "string" && order.orderContextKey.trim()
       ? order.orderContextKey.trim()
       : "legacy";
@@ -565,7 +569,9 @@ function getAdminOrderGroup(orderContextKey) {
 
 function buildAdminExportSummary(group) {
   const customersByKey = new Map();
-  const activeOrders = group.orders.filter((order) => order.isActive);
+  const activeOrders = group.orders.filter(
+    (order) => order.isActive && order.lifecycleStatus === "submitted"
+  );
 
   for (const order of activeOrders) {
     const customerKey = order.user?.id

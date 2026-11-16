@@ -75,7 +75,7 @@ function mapOrderRow(row, items, user = null) {
     orderContextKey: row.order_context_key,
     orderContextLabel: row.order_context_label,
     orderContextStatus: row.order_context_status ?? "open",
-    isActive: row.is_active ?? true,
+    isActive: row.lifecycle_status !== "cancelled" && (row.is_active ?? true),
     lifecycleStatus: row.lifecycle_status,
     paymentStatus: row.payment_status,
     fulfillmentStatus: row.fulfillment_status,
@@ -584,6 +584,7 @@ export function createOrderService({ db, catalogService, logger }) {
           UPDATE orders
           SET
             lifecycle_status = 'cancelled',
+            is_active = FALSE,
             updated_at = NOW()
           WHERE id = $1
           RETURNING *
@@ -680,6 +681,14 @@ export function createOrderService({ db, catalogService, logger }) {
 
       const currentOrder = rows[0];
 
+      if (currentOrder.lifecycle_status !== "submitted") {
+        throw createHttpError(
+          409,
+          "Only submitted orders can be toggled active/inactive",
+          "order_active_conflict"
+        );
+      }
+
       const { rows: updatedRows } = await executor.query(
         `
           UPDATE orders
@@ -708,7 +717,7 @@ export function createOrderService({ db, catalogService, logger }) {
     const whereClauses = [];
     const params = [];
 
-    whereClauses.push(`o.lifecycle_status <> 'draft'`);
+    whereClauses.push(`o.lifecycle_status = 'submitted'`);
 
     if (filters.orderContextStatus) {
       params.push(filters.orderContextStatus);

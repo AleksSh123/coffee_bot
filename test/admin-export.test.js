@@ -22,7 +22,7 @@ function createApp() {
   const source = readFileSync(new URL("../web/miniapp/app.js", import.meta.url), "utf8");
   vm.runInContext(source.replace(/bootstrap\(\);\s*$/, ""), context);
   const order = (id, userId, name, quantity, isActive = true) => ({
-    id, user: { id: userId, firstName: name }, isActive,
+    id, user: { id: userId, firstName: name }, isActive, lifecycleStatus: "submitted",
     orderContextKey: "week", orderContextLabel: "Текущий период",
     totals: { totalAmount: quantity * 100 },
     items: [{ offerKey: "tea", productName: "Чай", weight: 250, quantity, lineTotal: quantity * 100 }]
@@ -63,5 +63,17 @@ test("switching back to whole-order export restores all active applications", ()
 test("a missing selected application never falls back to exporting everyone", () => {
   const app = createApp();
   app.run('openAdminExportModal("week", "missing")');
+  assert.equal(app.run("getAdminExportGroup()"), null);
+});
+
+test("cancelled applications with legacy active flag are absent from groups and exports", () => {
+  const app = createApp();
+  app.run('state.adminOrders[0].lifecycleStatus = "cancelled"; openAdminExportModal("week")');
+  assert.equal(app.run('getAdminOrderGroup("week").orders.length'), 3);
+  assert.equal(app.run('getAdminOrderGroup("week").totalAmount'), 700);
+  assert.match(app.nodes.get("#admin-export-total").textContent, /700/);
+  assert.doesNotMatch(app.nodes.get("#admin-export-list").innerHTML, /5 шт/);
+  assert.equal(app.run('buildAdminExportSummary({ orders: [state.adminOrders[0]] }).positionsCount'), 0);
+  app.run('openAdminExportModal("week", "1")');
   assert.equal(app.run("getAdminExportGroup()"), null);
 });
