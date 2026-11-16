@@ -12,7 +12,7 @@ function createApp() {
     document: {
       querySelector(selector) {
         if (!nodes.has(selector)) {
-          nodes.set(selector, { classList: { add() {}, remove() {} }, dataset: {} });
+          nodes.set(selector, { classList: { add() {}, remove() {}, toggle() {} }, dataset: {} });
         }
         return nodes.get(selector);
       },
@@ -25,7 +25,7 @@ function createApp() {
     id, user: { id: userId, firstName: name }, isActive, lifecycleStatus: "submitted",
     orderContextKey: "week", orderContextLabel: "Текущий период",
     totals: { totalAmount: quantity * 100 },
-    items: [{ offerKey: "tea", productName: "Чай", weight: 250, quantity, lineTotal: quantity * 100 }]
+    items: [{ offerKey: "tea", productName: "Чай", weight: 250, price: 100, quantity, lineTotal: quantity * 100 }]
   });
   context.orders = [order(1, 10, "Анна", 2), order(2, 10, "Анна", 3),
     order(3, 20, "Борис", 4), order(4, 30, "Вера", 9, false)];
@@ -39,13 +39,29 @@ test("individual export and sharing include only the selected application", asyn
   const html = app.nodes.get("#admin-export-list").innerHTML;
   assert.match(html, /Анна/);
   assert.doesNotMatch(html, /Борис|Вера/);
-  assert.match(html, /2 шт/);
+  assert.match(html, /2 ×/);
   assert.match(app.nodes.get("#admin-export-title").textContent, /Заявка #1/);
   assert.match(app.nodes.get("#admin-export-total").textContent, /200/);
   await app.run("shareAdminExport()");
-  assert.match(app.shares[0].text, /Заявка #1/);
-  assert.match(app.shares[0].text, /Чай.*2 шт/);
+  assert.doesNotMatch(app.shares[0].text, /Заявка|Заказчиков|Позиций|Заказчик:/);
+  assert.match(app.shares[0].text, /Чай, 250 г — 2 × 100 ₽ = 200 ₽/);
   assert.doesNotMatch(app.shares[0].text, /Борис|Вера|5 шт/);
+});
+
+test("individual export matches the requested customer-only format exactly", async () => {
+  const app = createApp();
+  app.run(`state.adminOrders[0].user = { id: 10, firstName: "Денис", username: "denisz00" };
+    state.adminOrders[0].items = [
+      { offerKey: "brazil", productName: "Бразилия Игуасу", weight: 1000,
+        offerType: "bean_coffee", price: 1462.5, quantity: 1, lineTotal: 1462.5 },
+      { offerKey: "colombia", productName: "Колумбия Богота", weight: 1000,
+        offerType: "bean_coffee", price: 1625, quantity: 1, lineTotal: 1625 }
+    ]; openAdminExportModal("week", "1");`);
+  await app.run("shareAdminExport()");
+  assert.deepEqual(Object.keys(app.shares[0]), ["text"]);
+  assert.equal(app.shares[0].text.replace(/[\u00a0\u202f]/g, " "),
+    "@denisz00\n\nБразилия Игуасу, 1 кг — 1 × 1 462,5 ₽ = 1 462,5 ₽\n" +
+    "Колумбия Богота, 1 кг — 1 × 1 625 ₽ = 1 625 ₽\nИтого: 3 087,5 ₽");
 });
 
 test("switching back to whole-order export restores all active applications", () => {

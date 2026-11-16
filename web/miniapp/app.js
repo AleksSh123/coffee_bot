@@ -591,7 +591,8 @@ function buildAdminExportSummary(group) {
     }
 
     for (const item of order.items) {
-      const itemKey = item.offerKey || `${item.productName}|${item.offerName}|${item.weight}|${item.offerType}`;
+      const offerKey = item.offerKey || `${item.productName}|${item.offerName}|${item.weight}|${item.offerType}`;
+      const itemKey = group.exportOrderId ? `${offerKey}|price:${item.price}` : offerKey;
       const existingItem = customer.itemsByKey.get(itemKey);
 
       if (existingItem) {
@@ -603,6 +604,10 @@ function buildAdminExportSummary(group) {
       customer.itemsByKey.set(itemKey, {
         key: itemKey,
         title: formatAdminExportItemTitle(item),
+        exportTitle: [item.productName?.trim(), formatWeight(item.weight),
+          item.offerType === "bean_coffee" ? null : formatOfferType(item.offerType)]
+          .filter(Boolean).join(", ") || item.offerName || "позиция без названия",
+        price: Number(item.price),
         quantity: item.quantity,
         totalAmount: Number(item.lineTotal)
       });
@@ -643,6 +648,22 @@ function buildAdminExportSummary(group) {
 }
 
 function buildAdminExportShareText(group, summary) {
+  if (group.exportOrderId) {
+    const user = group.orders[0]?.user;
+    const customerName = user?.username
+      ? `@${user.username.replace(/^@/, "")}`
+      : user ? getDisplayName(user) : "Пользователь неизвестен";
+    const positions = summary.customers.flatMap((customer) => customer.positions);
+    return [
+      customerName,
+      "",
+      ...positions.map((item) =>
+        `${item.exportTitle} — ${item.quantity} × ${formatPrice(item.price)} = ${formatPrice(item.totalAmount)}`
+      ),
+      `Итого: ${formatPrice(summary.totalAmount)}`
+    ].join("\n");
+  }
+
   const lines = [
     getAdminExportTitle(group),
     formatOrderContextText(group.label),
@@ -717,7 +738,9 @@ function renderAdminExportModal() {
   elements.adminExportMeta.textContent =
     `${formatOrderContextText(group.label)} · Заказчиков: ${summary.customers.length} · Позиций: ${summary.positionsCount}`;
   elements.adminExportList.innerHTML =
-    summary.customers.length > 0
+    group.exportOrderId
+      ? `<div style="white-space: pre-wrap">${escapeHtml(buildAdminExportShareText(group, summary))}</div>`
+      : summary.customers.length > 0
       ? summary.customers
           .map(
             (customer) => `
@@ -749,6 +772,8 @@ function renderAdminExportModal() {
           .join("")
       : '<div class="empty-state">В этом заказе нет активных позиций для экспорта.</div>';
   elements.adminExportTotal.textContent = `Итого: ${formatPrice(summary.totalAmount)}`;
+  elements.adminExportTotal.classList.toggle("is-hidden", Boolean(group.exportOrderId));
+  elements.adminExportMeta.classList.toggle("is-hidden", Boolean(group.exportOrderId));
   elements.adminExportModal.classList.remove("is-hidden");
   document.body.classList.add("has-modal-open");
 }
@@ -762,7 +787,7 @@ async function shareAdminExport() {
 
   const summary = buildAdminExportSummary(group);
   const text = buildAdminExportShareText(group, summary);
-  const sharePayload = {
+  const sharePayload = group.exportOrderId ? { text } : {
     title: getAdminExportTitle(group),
     text
   };
