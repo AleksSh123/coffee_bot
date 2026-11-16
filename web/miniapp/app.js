@@ -4,6 +4,7 @@ const state = {
     orderContextStatus: null
   },
   adminExportOrderContextKey: null,
+  adminExportOrderId: null,
   authToken: null,
   catalog: null,
   categoryPath: [],
@@ -637,7 +638,7 @@ function buildAdminExportSummary(group) {
 
 function buildAdminExportShareText(group, summary) {
   const lines = [
-    `Заказ ${formatOrderContextName(group.key, group.label)}`,
+    getAdminExportTitle(group),
     formatOrderContextText(group.label),
     `Заказчиков: ${summary.customers.length}`,
     `Позиций: ${summary.positionsCount}`,
@@ -666,18 +667,37 @@ function buildAdminExportShareText(group, summary) {
 
 function closeAdminExportModal() {
   state.adminExportOrderContextKey = null;
+  state.adminExportOrderId = null;
   renderAdminExportModal();
 }
 
-function openAdminExportModal(orderContextKey) {
+function openAdminExportModal(orderContextKey, orderId = null) {
   state.adminExportOrderContextKey = orderContextKey;
+  state.adminExportOrderId = orderId === null ? null : String(orderId);
   renderAdminExportModal();
 }
 
-function renderAdminExportModal() {
+function getAdminExportGroup() {
   const group = state.adminExportOrderContextKey
     ? getAdminOrderGroup(state.adminExportOrderContextKey)
     : null;
+
+  if (!group || state.adminExportOrderId === null) {
+    return group;
+  }
+
+  const orders = group.orders.filter((order) => String(order.id) === state.adminExportOrderId);
+  return orders.length > 0 ? { ...group, orders, exportOrderId: state.adminExportOrderId } : null;
+}
+
+function getAdminExportTitle(group) {
+  return group.exportOrderId
+    ? `Заявка #${group.exportOrderId} · Заказ ${formatOrderContextName(group.key, group.label)}`
+    : `Заказ ${formatOrderContextName(group.key, group.label)}`;
+}
+
+function renderAdminExportModal() {
+  const group = getAdminExportGroup();
 
   if (!group) {
     elements.adminExportModal.classList.add("is-hidden");
@@ -687,7 +707,7 @@ function renderAdminExportModal() {
 
   const summary = buildAdminExportSummary(group);
 
-  elements.adminExportTitle.textContent = `Заказ ${formatOrderContextName(group.key, group.label)}`;
+  elements.adminExportTitle.textContent = getAdminExportTitle(group);
   elements.adminExportMeta.textContent =
     `${formatOrderContextText(group.label)} · Заказчиков: ${summary.customers.length} · Позиций: ${summary.positionsCount}`;
   elements.adminExportList.innerHTML =
@@ -728,9 +748,7 @@ function renderAdminExportModal() {
 }
 
 async function shareAdminExport() {
-  const group = state.adminExportOrderContextKey
-    ? getAdminOrderGroup(state.adminExportOrderContextKey)
-    : null;
+  const group = getAdminExportGroup();
 
   if (!group) {
     return;
@@ -739,7 +757,7 @@ async function shareAdminExport() {
   const summary = buildAdminExportSummary(group);
   const text = buildAdminExportShareText(group, summary);
   const sharePayload = {
-    title: `Заказ ${formatOrderContextName(group.key, group.label)}`,
+    title: getAdminExportTitle(group),
     text
   };
 
@@ -1364,6 +1382,9 @@ function renderAdminOrders() {
                           .join("")}
                       </div>
                       <div class="admin-actions">
+                        <button class="ghost-button" type="button" data-action="open-admin-export" data-order-context-key="${escapeHtml(group.key)}" data-order-id="${order.id}" ${order.isActive ? "" : "disabled"}>
+                          Экспорт заявки
+                        </button>
                         <div class="admin-actions__row">
                           ${buildAdminActionButton(order, "paymentStatus", "paid", "Отметить как оплаченный")}
                           ${buildAdminActionButton(order, "paymentStatus", "unpaid", "Вернуть в неоплаченный")}
@@ -1811,7 +1832,7 @@ function attachEvents() {
       }
 
       if (button.dataset.action === "open-admin-export") {
-        openAdminExportModal(button.dataset.orderContextKey);
+        openAdminExportModal(button.dataset.orderContextKey, button.dataset.orderId ?? null);
         return;
       }
 
